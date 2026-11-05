@@ -15,13 +15,14 @@ RepoSentinel is an autonomous pair-programming and security agent that inspects 
 ## 🌟 Key Features
 
 - **Multi-Language Detection**: Scans Python, TypeScript, JavaScript, Go, Rust, Java, C/C++, Ruby, PHP, SQL, Shell, and more.
+- **Repository-Aware Symbol Index & Topology**: AST-based symbol extraction (classes, functions, methods, parameters, docstrings) and automated inter-file dependency graph mapping (`--topology`).
 - **Dual Engine Architecture**:
   - **Static Heuristic Engine**: Zero-network offline heuristics to catch command injections, hardcoded secrets, SQL injection formatting, swallowed exceptions, and unclosed resources.
   - **LLM Agent Engine**: Deep semantic reasoning powered by Google Gemini, OpenAI, DeepSeek, or local models via Ollama.
 - **Zero Required External Dependencies**: Engineered on the Python standard library—runs anywhere Python 3.9+ is installed without `pip install` hurdles.
 - **Remote & Local Ingestion**: Scan any local project or pass a remote GitHub repository URL directly (shallow clones and cleans up automatically).
 - **Multiple Output Formats**:
-  - 🎨 **Terminal Dashboard**: Colored cards with severity badges, file locations, and line-level code previews.
+  - 🎨 **Terminal Dashboard**: Colored cards with severity badges, file locations, line-level code previews, and topology statistics.
   - 📝 **Markdown Report**: Ready to post as a GitHub Issue or Pull Request comment.
   - 📊 **JSON Export**: Structured output designed for security pipelines and SIEM/dashboard ingestion.
 - **CI/CD Integration**: Supports `--fail-on-bugs` flag to gate pull requests if `CRITICAL` or `HIGH` vulnerabilities are uncovered.
@@ -102,6 +103,7 @@ Options:
   --workers             Number of concurrent worker threads (default: 4)
   --dry-run             Force offline heuristic analyzer without querying external APIs
   --fail-on-bugs        Return exit code 1 if CRITICAL or HIGH findings exist (for CI pipelines)
+  --topology            Display detailed repository symbol index and dependency topology graph
 ```
 
 ---
@@ -118,7 +120,14 @@ Options:
                  |   Repository Scanner  | (Filter noise, ignore binaries/lockfiles)
                  +-----------+-----------+
                              |
-                 +-----------v-----------+
+                             v
+                 +-----------------------+
+                 | AST Symbol Indexer    | (Classes, Functions, Methods, Calls,
+                 | & Topology Generator  |  and Inter-file Dependency Graph)
+                 +-----------+-----------+
+                             |
+                             v
+                 +-----------------------+
                  |   RepoSentinel Agent  | (Parallel ThreadPool Executor)
                  +-----------+-----------+
                              |
@@ -165,10 +174,12 @@ python3 -m unittest discover tests
 - [x] Static Heuristic Pattern Analyzer
 - [x] Multi-LLM provider support (Gemini, OpenAI, Ollama)
 - [x] Markdown and JSON report generators
-- [ ] GitHub Action workflow for automatic PR reviews
-- [ ] Automated Fix Generation (Autonomous PR creator)
-- [ ] AST-based call-graph and taint analysis
-- [ ] Vector semantic code search for large mono-repos
+- [x] AST-based Symbol Indexer & Dependency Topology (`--topology`)
+- [ ] Attack Surface & Risk-Based File Prioritizer (Phase 3)
+- [ ] Context-Enriched Cross-File Prompting (Phase 4)
+- [ ] Two-Stage Autonomous Verification Agent (Phase 5)
+- [ ] Automated Unified Diff Patch / PR Creator (Phase 6)
+- [ ] GitHub Action workflow for automated PR reviews
 
 ---
 

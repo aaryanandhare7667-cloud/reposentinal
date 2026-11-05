@@ -9,6 +9,7 @@ from reposentinal.models import Severity
 from reposentinal.providers import get_provider
 from reposentinal.reporter import TerminalReporter, MarkdownReporter, JSONReporter
 from reposentinal.scanner import prepare_target, scan_repository
+from reposentinal.indexer import build_repository_index
 
 
 def parse_args():
@@ -86,6 +87,11 @@ Examples:
         "--fail-on-bugs",
         action="store_true",
         help="Exit with non-zero exit code if CRITICAL or HIGH severity bugs are found (useful for CI/CD)",
+    )
+    parser.add_argument(
+        "--topology",
+        action="store_true",
+        help="Display detailed repository symbol index and dependency topology graph",
     )
 
     return parser.parse_args()
@@ -165,6 +171,26 @@ def main():
         # Render outputs
         if args.format in ("terminal", "all"):
             TerminalReporter.render(summary)
+
+        if args.topology:
+            repo_index = build_repository_index(files)
+            print("🕸️  Repository Dependency Graph & Symbol Map:")
+            for node in sorted(repo_index.graph.nodes):
+                deps = repo_index.graph.edges.get(node, set())
+                exts = repo_index.graph.external_dependencies.get(node, set())
+                file_syms = repo_index.get_file_symbols(node)
+                classes = [s.name for s in file_syms if s.kind == "CLASS"]
+                functions = [s.name for s in file_syms if s.kind == "FUNCTION"]
+                print(f"  📄 {node}")
+                if classes:
+                    print(f"     ├── Classes: {', '.join(classes)}")
+                if functions:
+                    print(f"     ├── Functions: {', '.join(functions)}")
+                if deps:
+                    print(f"     ├── Internal Imports: {', '.join(sorted(deps))}")
+                if exts:
+                    print(f"     └── External Deps: {', '.join(sorted(exts))}")
+            print()
 
         if args.output:
             out_path = Path(args.output).resolve()

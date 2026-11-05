@@ -14,15 +14,21 @@
 
 ---
 
-## Phase 2: Repository-Aware Symbol Index & Topology (Next Up 🚀)
-- [ ] Build AST-based symbol extractor for Python and multi-language files (`reposentinal/indexer.py`)
-- [ ] Construct file-level import and dependency graph
-- [ ] Extract function signatures, class hierarchies, and exported APIs
-- [ ] Add unit tests for symbol indexing and dependency mapping
+## Phase 2: Repository-Aware Symbol Index & Topology (Completed ✅)
+- [x] Build AST-based symbol extractor for Python files (`reposentinal/indexer.py`)
+  - [x] Extracted classes, functions, methods, parameters, docstrings, decorators, and line spans
+  - [x] Tracked function and method call references
+- [x] Construct file-level import and dependency graph (`DependencyGraph`)
+  - [x] Absolute and relative import resolution
+  - [x] Forward edges (`file -> imported files`) and reverse edges (`file -> dependent files`)
+  - [x] External/stdlib dependency tracking
+- [x] Integrated topology into `ScanSummary` and reporters (`TerminalReporter`, `MarkdownReporter`)
+- [x] Added `--topology` CLI flag for visualizing codebase topology
+- [x] Added dedicated unit tests in `tests/test_indexer.py` (6/6 tests passing)
 
 ---
 
-## Phase 3: Attack Surface & Risk Prioritizer
+## Phase 3: Attack Surface & Risk Prioritizer (Next Up 🚀)
 - [ ] Implement risk-scoring heuristic for source files (e.g., auth, routes, db models, crypto)
 - [ ] Sort scanned files based on risk score rather than filesystem order
 - [ ] Allow targeted scans by vulnerability domain (e.g., `--focus security`, `--focus logic`)

@@ -45,6 +45,9 @@ class TerminalReporter:
         print(f"{BOLD}Provider:{RESET}       {summary.provider_used}")
         print(f"{BOLD}Files Scanned:{RESET}  {summary.scanned_files} files ({summary.total_lines:,} lines of code)")
         print(f"{BOLD}Duration:{RESET}       {summary.duration_seconds:.2f}s")
+        if summary.topology_summary:
+            top = summary.topology_summary
+            print(f"{BOLD}Topology:{RESET}       {top.get('total_symbols', 0)} symbols ({top.get('classes_count', 0)} classes, {top.get('functions_count', 0)} functions, {top.get('methods_count', 0)} methods) | {top.get('internal_edges_count', 0)} inter-file dependencies")
         print()
 
         if not summary.findings:
@@ -92,7 +95,11 @@ class MarkdownReporter:
         md.append(f"- **Target**: `{summary.target}`")
         md.append(f"- **Provider**: `{summary.provider_used}`")
         md.append(f"- **Files Scanned**: {summary.scanned_files} ({summary.total_lines:,} lines)")
-        md.append(f"- **Duration**: {summary.duration_seconds:.2f}s\n")
+        md.append(f"- **Duration**: {summary.duration_seconds:.2f}s")
+        if summary.topology_summary:
+            top = summary.topology_summary
+            md.append(f"- **Codebase Topology**: {top.get('total_symbols', 0)} symbols ({top.get('classes_count', 0)} classes, {top.get('functions_count', 0)} functions, {top.get('methods_count', 0)} methods) | {top.get('internal_edges_count', 0)} internal dependencies")
+        md.append("")
 
         md.append("## 📊 Summary\n")
         md.append("| Severity | Count |")

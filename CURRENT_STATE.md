@@ -1,38 +1,40 @@
 # RepoSentinel: Current State & Architecture Assessment
 
 *Last Updated: 2026-11-05*  
-*Document Version: 1.0.0*  
+*Document Version: 1.1.0 (Phase 2: Repository-Aware Symbol Index & Topology)*  
 *Lead Engineer Status Report*
 
 ---
 
 ## 1. Executive Summary
 
-RepoSentinel is an autonomous bug and vulnerability discovery system for GitHub repositories. The current MVP operates as a fast, zero-dependency command-line agent capable of scanning both local file paths and remote GitHub repositories. It integrates a dual-mode engine: an offline static heuristic detector and an LLM semantic agent supporting Google Gemini, OpenAI, DeepSeek, and local Ollama models.
+RepoSentinel is an autonomous bug and vulnerability discovery system for GitHub repositories. With the completion of **Phase 2**, the system has evolved from a flat file-by-file scanner into a **repository-aware code intelligence engine**. It now constructs an Abstract Syntax Tree (AST) symbol index and dependency graph topology of the target codebase before running analysis.
 
-The current implementation is functional, verified against intentional vulnerability test fixtures, and covered by automated unit tests.
+The system continues to run on standard library Python (>=3.9) with zero external runtime dependencies.
 
 ---
 
 ## 2. System Architecture
 
-The existing codebase is structured into modular components adhering strictly to standard library Python (>=3.9):
+The codebase contains the following modular components:
 
 ```
 reposentinal/
 ├── bin/reposentinal          # Standalone executable CLI launcher
 ├── reposentinal/
-│   ├── __init__.py           # Package versioning (v0.1.0)
+│   ├── __init__.py           # Package versioning (v0.2.0) and top-level exports
 │   ├── models.py             # Domain models (BugFinding, FileContext, ScanSummary, Severity)
+│   ├── indexer.py            # AST Symbol Indexer & Dependency Topology Graph (Phase 2)
 │   ├── scanner.py            # Target cloning, directory walker, binary filter, extension map
 │   ├── providers.py          # LLM integrations (MockProvider, GeminiProvider, OpenAIProvider)
-│   ├── analyzer.py           # Concurrency orchestrator (ThreadPoolExecutor, deduplication)
-│   ├── reporter.py           # Formatting engines (ANSI Terminal, Markdown, JSON)
-│   └── cli.py                # Command-line interface & argument parser
+│   ├── analyzer.py           # Concurrency orchestrator (ThreadPoolExecutor, topology integration)
+│   ├── reporter.py           # Formatting engines (ANSI Terminal, Markdown, JSON, Topology)
+│   └── cli.py                # Command-line interface with --topology and --fail-on-bugs
 ├── tests/
 │   ├── __init__.py
 │   ├── sample_vulnerable_code.py  # Intentional multi-category vulnerability test fixture
-│   └── test_scanner.py            # Unittest test cases
+│   ├── test_scanner.py            # Scanner, heuristic, and orchestrator unit tests
+│   └── test_indexer.py            # AST symbol extraction, resolution, and topology tests
 ├── pyproject.toml            # Package configuration & standard entrypoints
 └── requirements.txt          # Zero required runtime dependencies
 ```
@@ -48,72 +50,67 @@ reposentinal/
 [scanner.scan_repository] ──► Extracts FileContext objects (filtered, size-checked, text-verified)
         │
         ▼
+[indexer.build_repository_index] ──► Generates Symbol Index & Dependency Graph
+        │                            (Classes, Functions, Methods, Imports, Call references)
+        ▼
 [analyzer.RepoSentinelAgent] ──► Concurrently dispatches FileContexts across ThreadPool
         │
         ├──► [MockProvider (Static Heuristics)] ──► Regex & structural pattern matching
         └──► [GeminiProvider / OpenAIProvider]  ──► Structured JSON prompting via REST API
         │
         ▼
-[Deduplication & Severity Sorting]
+[Deduplication, Severity Sorting, & Topology Enrichment]
         │
         ▼
-[reporter.TerminalReporter / MarkdownReporter / JSONReporter]
+[reporter.TerminalReporter / MarkdownReporter / JSONReporter] (Includes Topology Map)
 ```
 
 ---
 
-## 3. Features Implemented
+## 3. Implemented Features (v0.2.0)
 
 | Component | Capabilities | Status |
 |---|---|---|
-| **CLI & Packaging** | Zero runtime dependencies, standalone launcher (`bin/reposentinal`), argument parsing, env var fallback (`GEMINI_API_KEY`, `OPENAI_API_KEY`), `--fail-on-bugs` CI flag | ✅ Complete |
-| **Ingestion** | Local directory walk, single file scan, remote GitHub repository shallow cloning and automated temp directory cleanup | ✅ Complete |
-| **Language Coverage** | Python, TypeScript, JavaScript, Go, Rust, Java, C/C++, Ruby, PHP, SQL, Shell | ✅ Complete |
-| **Static Heuristics** | Detects hardcoded secrets, command injection (`shell=True`, `os.system`), SQL injection via f-strings, disabled SSL verification, swallowed exceptions (`except: pass`), and unclosed file resources | ✅ Complete |
-| **LLM Providers** | Gemini REST API (`generateContent`), OpenAI-compatible API (`/chat/completions`), Ollama local runner, Mock offline provider | ✅ Complete |
-| **Reporting** | Rich ANSI terminal dashboard, GitHub PR/Issue-ready Markdown report, JSON schema export | ✅ Complete |
+| **Symbol Indexer** | AST-based extraction of Classes, Functions, Methods, Docstrings, Parameters, Decorators, and Line spans | ✅ Complete (Phase 2) |
+| **Dependency Topology** | Resolves absolute & relative Python imports, internal file-to-file graph edges, reverse dependencies, and external package imports | ✅ Complete (Phase 2) |
+| **Call Reference Mapping** | Maps caller files to symbol invocations across the repository | ✅ Complete (Phase 2) |
+| **CLI & Flags** | `--topology` flag to render complete dependency and symbol hierarchy; `--fail-on-bugs` for CI/CD gating | ✅ Complete |
+| **Dual Engine** | Static Heuristics (Zero-network) + LLM Semantic Reasoning (Gemini, OpenAI, Ollama) | ✅ Complete |
+| **Target Ingestion** | Local directory walk, single file scan, remote GitHub repository shallow cloning with auto cleanup | ✅ Complete |
+| **Reporting** | ANSI Terminal cards with Topology stats, PR-ready Markdown report, structured JSON | ✅ Complete |
 
 ---
 
 ## 4. Test Suite & Verification Status
 
-- **Automated Test Suite**: `python3 -m unittest discover -v tests`
-  - `test_scanner_detects_python_file`: Verifies language detection, line counts, and metadata extraction.
-  - `test_mock_provider_heuristics`: Validates static detection across critical, high, and medium bug classes.
-  - `test_agent_orchestration_and_summary`: Confirms multi-threaded agent execution, deduplication, and summary metrics.
-  - **Result**: `3/3 passed (100%) in 0.002s`.
-- **End-to-End Verification**: Scanned `tests/sample_vulnerable_code.py` uncovering 6/6 intentional vulnerabilities across Security, Logic Error, and Resource Leak categories with accurate line numbers and remediations.
+Automated test execution: `python3 -m unittest discover -v tests`
+- `test_ast_symbol_extraction`: Validates AST extraction of classes, methods, docstrings, parameters, and calls.
+- `test_module_resolution`: Validates resolution of both absolute (`reposentinal.models`) and relative (`.models`) import statements.
+- `test_repository_wide_index_and_topology`: Tests whole-codebase topology generation and dependency edge mapping.
+- `test_scanner_detects_python_file`: Verifies language detection, line counts, and metadata extraction.
+- `test_mock_provider_heuristics`: Validates static detection across critical, high, and medium bug classes.
+- `test_agent_orchestration_and_summary`: Confirms multi-threaded agent execution, deduplication, and summary metrics.
+
+**Test Summary**: `6/6 passed (100%) in 0.028s`.
 
 ---
 
 ## 5. Current Limitations (Gaps to Research-Grade System)
 
-While the MVP is robust and fast, it currently possesses architectural limitations inherent to file-level scanners:
+With Phase 2 complete, the system has a structural model of the repository. The remaining gaps are:
 
-1. **Isolated File Scope (Lack of Cross-File Context)**:
-   - Each file is analyzed independently. Cross-file data flows (e.g. untrusted input received in `views.py` passed to an unparameterized database query in `db/crud.py`) are invisible to both the heuristic rules and the LLM prompt.
-2. **No Repository Symbol & Dependency Graph**:
-   - The system lacks an index of function declarations, class definitions, imports, and cross-references.
-3. **Naive File Scheduling**:
-   - Files are scanned in filesystem order rather than prioritizing critical attack surfaces (routes, authentication handlers, external API clients, payment handlers, database models).
-4. **No Autonomous Verification & False Positive Triage**:
-   - Findings from LLMs can occasionally include false positives (e.g. flagging a test mock secret or an internal trusted parameter as injection). A research-grade system requires a second-pass verification / reflection step to validate whether a finding is reachable and genuine.
-5. **No Patch / Diff Generation**:
-   - Findings provide textual remediation advice, but do not yet generate validated unified diffs ready for pull requests.
+1. **Attack Surface & Risk Prioritizer (Phase 3)**:
+   - Scanning currently executes on all files concurrently. A research-grade engine should rank files based on attack surface risk (API routes, authentication, crypto, database operations) to scan critical code first.
+2. **Context-Enriched Prompts (Phase 4)**:
+   - The symbol index is not yet injected into LLM prompts. In Phase 4, when analyzing a file, the prompt will include signatures and docstrings of imported symbols.
+3. **Autonomous False Positive Verification (Phase 5)**:
+   - Second-pass reflection to cross-verify findings against caller sanitizers.
+4. **Patch Synthesis (Phase 6)**:
+   - Autonomous generation of unified `.patch` diffs.
 
 ---
 
-## 6. Recommended Next Steps
+## 6. Recommended Next Step: Phase 3 (Attack Surface & Risk Prioritizer)
 
-To evolve the MVP incrementally into a research-grade repository-aware system without breaking existing functionality:
-
-- [ ] **Step 1: Repository Topology & Symbol Indexer (`reposentinal/indexer.py`)**:
-  - Build a lightweight AST symbol indexer (classes, functions, imports, calls) to map the codebase structure.
-- [ ] **Step 2: Attack Surface & Risk Prioritizer (`reposentinal/prioritizer.py`)**:
-  - Rank files by architectural criticality (e.g. API endpoints, authentication, database calls) so high-risk code is prioritized.
-- [ ] **Step 3: Repository-Aware Context Enrichment (`reposentinal/context.py`)**:
-  - When analyzing a file, enrich the context with referenced definitions, import signatures, and project-level framework conventions.
-- [ ] **Step 4: Two-Stage Verification & False-Positive Filter (`reposentinal/verifier.py`)**:
-  - Implement an agentic self-verification stage that cross-checks candidate findings against call chains and sanitizers.
-- [ ] **Step 5: Unified Patch & Fix Generator**:
-  - Produce syntactically valid unified diffs for detected vulnerabilities.
+- Create `reposentinal/prioritizer.py` to evaluate risk scores per file based on imported frameworks (e.g., Flask/FastAPI/Django routes), database calls, shell commands, and authentication modules.
+- Reorder scanning queues so the highest-risk files are evaluated first.

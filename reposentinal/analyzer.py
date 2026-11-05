@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Callable, Optional
 from reposentinal.models import BugFinding, FileContext, ScanSummary, Severity
 from reposentinal.providers import BaseLLMProvider
+from reposentinal.indexer import build_repository_index, SymbolKind
 
 SEVERITY_ORDER = {
     Severity.CRITICAL: 0,
@@ -77,6 +78,17 @@ class RepoSentinelAgent:
         # Sort by severity
         unique_findings.sort(key=lambda x: SEVERITY_ORDER.get(x.severity, 99))
 
+        # Build repository symbol index and dependency topology
+        repo_index = build_repository_index(files)
+        topology_summary = {
+            "total_symbols": len(repo_index.symbols),
+            "classes_count": sum(1 for s in repo_index.symbols if s.kind == SymbolKind.CLASS),
+            "functions_count": sum(1 for s in repo_index.symbols if s.kind == SymbolKind.FUNCTION),
+            "methods_count": sum(1 for s in repo_index.symbols if s.kind == SymbolKind.METHOD),
+            "internal_edges_count": sum(len(v) for v in repo_index.graph.edges.values()),
+            "external_dependencies_count": sum(len(v) for v in repo_index.graph.external_dependencies.values()),
+        }
+
         duration = time.time() - start_time
         return ScanSummary(
             target=target_name,
@@ -85,4 +97,5 @@ class RepoSentinelAgent:
             findings=unique_findings,
             duration_seconds=duration,
             provider_used=type(self.provider).__name__,
+            topology_summary=topology_summary,
         )

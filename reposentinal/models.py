@@ -47,6 +47,7 @@ class ScanSummary:
     findings: List[BugFinding] = field(default_factory=list)
     duration_seconds: float = 0.0
     provider_used: str = "mock"
+    topology_summary: Optional[Dict[str, Any]] = None
 
     @property
     def critical_count(self) -> int:
@@ -69,7 +70,7 @@ class ScanSummary:
         return sum(1 for f in self.findings if f.severity == Severity.INFO)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "target": self.target,
             "scanned_files": self.scanned_files,
             "total_lines": self.total_lines,
@@ -85,3 +86,6 @@ class ScanSummary:
             },
             "findings": [f.to_dict() for f in self.findings],
         }
+        if self.topology_summary is not None:
+            result["topology"] = self.topology_summary
+        return result
