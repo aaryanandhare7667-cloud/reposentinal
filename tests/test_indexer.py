@@ -89,7 +89,7 @@ def top_level_helper(x, y):
 
     def test_repository_wide_index_and_topology(self):
         root_path = Path(__file__).resolve().parent.parent
-        files = scan_repository(root_path, max_files=100)
+        files = scan_repository(root_path, max_files=250)
         self.assertGreater(len(files), 3)
 
         index = build_repository_index(files)

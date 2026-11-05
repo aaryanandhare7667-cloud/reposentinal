@@ -1,7 +1,8 @@
 /**
  * Base API client with backend integration point.
- * Initially checks if a live backend REST server is reachable; if not, safely
- * falls back to local data store without throwing unhandled exceptions.
+ * Connects the React frontend to the real RepoSentinel localhost Python API.
+ * If the API is available, real backend data is strictly preferred.
+ * If backend is offline/unreachable, gracefully falls back to mock models.
  */
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -17,12 +18,17 @@ export async function request(endpoint, options = {}) {
     });
     
     if (!res.ok) {
-      throw new Error(`HTTP Error ${res.status}: ${res.statusText}`);
+      if (res.status === 404) {
+        return null;
+      }
+      const errBody = await res.json().catch(() => ({}));
+      console.warn(`[RepoSentinel API] ${res.status}: ${errBody.error || res.statusText}`);
+      return null;
     }
     
     return await res.json();
   } catch (err) {
-    // If backend server is not running, log cleanly and return null for service layer fallback
+    // Backend offline / network failure: fallback to demo store
     console.debug(`[RepoSentinel API] Backend unavailable at ${API_BASE_URL}${endpoint}. Utilizing fallback data layer.`);
     return null;
   }
