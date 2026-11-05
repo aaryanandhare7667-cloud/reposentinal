@@ -31,52 +31,66 @@ RepoSentinel now:
 
 ## 2. System Architecture
 
-RepoSentinel maintains zero external runtime dependencies (Python >=3.9 standard library):
+RepoSentinel maintains zero external runtime dependencies (Python >=3.9 standard library) and features a clean, highly modular `backend/` organization with 100% backward-compatible bridges:
 
 ```
 reposentinal/
-├── bin/reposentinal          # Standalone executable CLI launcher
-├── reposentinal/
-│   ├── __init__.py           # Package versioning (v0.5.0) and top-level exports
-│   ├── models.py             # Domain models (BugFinding, FileContext, ScanSummary, Severity)
-│   ├── indexer.py            # AST Symbol Indexer & Dependency Topology Graph (Phase 2)
-│   ├── context.py            # Repository Context Builder & Prompt Synthesizer (Phase 3)
-│   ├── hypothesis.py         # BugHypothesis schema, BugStatus, Confidence & Metrics (Phase 3)
-│   ├── hypothesis_engine.py  # RuleBasedHypothesisEngine & LLMHypothesisEngine (Phase 3)
-│   ├── test_generator.py     # AdversarialTest, TestSafetyValidator, DeterministicTestGenerator (Phase 4)
-│   ├── sandbox.py            # BaseSandbox, DockerSandbox, SafeSubprocessSandbox (Phase 4)
-│   ├── verification.py       # VerificationStatus, ExecutionResult, VerificationEvidence (Phase 4)
-│   ├── verifier.py           # HypothesisVerifier & Research Metrics Evaluator (Phase 4)
-│   ├── patch_models.py       # GeneratedPatch, PatchVerificationResult, PatchQualityMetrics (Phase 5)
-│   ├── patch_safety.py       # PatchSafetyValidator: structural & security checks (Phase 5)
-│   ├── patch_workspace.py    # IsolatedPatchWorkspace: ephemeral workspace manager (Phase 5)
-│   ├── patch_applier.py      # PatchApplier: workspace diff application & AST check (Phase 5)
-│   ├── patch_generator.py    # DeterministicPatchGenerator: minimal, safe patch synthesis (Phase 5)
-│   ├── patch_verifier.py     # PatchVerifier: dual-phase verification & regression protection (Phase 5)
-│   ├── scanner.py            # Target cloning, directory walker, binary filter, extension map
-│   ├── providers.py          # LLM integrations (MockProvider, GeminiProvider, OpenAIProvider)
-│   ├── analyzer.py           # Multi-threaded orchestrator & end-to-end pipeline coordination
-│   ├── reporter.py           # Formatting engines (ANSI Terminal, Markdown, JSON, Patch Diffs)
-│   └── cli.py                # Command-line interface with --topology, --no-verify, --no-patch
+├── bin/reposentinal                  # Standalone executable CLI launcher
+├── backend/                          # Modular core backend package
+│   ├── __init__.py                   # Core exports & versioning (v0.5.0)
+│   ├── models/                       # Data domain & representation layer
+│   │   ├── __init__.py               # Re-exports models, hypothesis, and patch_models
+│   │   ├── models.py                 # Core domain models (Severity, BugFinding, FileContext, ScanSummary)
+│   │   ├── hypothesis.py             # BugHypothesis schema, BugStatus, Confidence & Metrics (Phase 3)
+│   │   └── patch_models.py           # GeneratedPatch, PatchVerificationResult, PatchQualityMetrics (Phase 5)
+│   ├── scanner/                      # Ingestion & file discovery layer
+│   │   ├── __init__.py               # Re-exports scanner functions & constants
+│   │   └── scanner.py                # Target cloning, directory walker, binary filter, extension map (Phase 1)
+│   ├── analysis/                     # Static analysis, indexing, and hypothesis engine
+│   │   ├── __init__.py               # Re-exports agent, indexer, context, engines, and providers
+│   │   ├── analyzer.py               # Multi-threaded orchestrator & end-to-end pipeline coordination
+│   │   ├── indexer.py                # AST Symbol Indexer & Dependency Topology Graph (Phase 2)
+│   │   ├── context.py                # Repository Context Builder & Prompt Synthesizer (Phase 3)
+│   │   ├── hypothesis_engine.py      # RuleBasedHypothesisEngine & LLMHypothesisEngine (Phase 3)
+│   │   └── providers.py              # LLM integrations (MockProvider, GeminiProvider, OpenAIProvider)
+│   ├── verification/                 # Sandboxing & adversarial verification layer
+│   │   ├── __init__.py               # Re-exports verifier, sandbox backends, and test generators
+│   │   ├── verification.py           # VerificationStatus, ExecutionResult, VerificationEvidence (Phase 4)
+│   │   ├── verifier.py               # HypothesisVerifier & empirical confirmation engine (Phase 4)
+│   │   ├── sandbox.py                # BaseSandbox, DockerSandbox, SafeSubprocessSandbox (Phase 4)
+│   │   └── test_generator.py         # AdversarialTest, TestSafetyValidator, DeterministicTestGenerator (Phase 4)
+│   ├── patching/                     # Remediation, safety validation, and patch verification layer
+│   │   ├── __init__.py               # Re-exports patch verifier, generator, safety, workspace, and applier
+│   │   ├── patch_verifier.py         # PatchVerifier: dual-phase verification & regression protection (Phase 5)
+│   │   ├── patch_generator.py        # DeterministicPatchGenerator: minimal, safe patch synthesis (Phase 5)
+│   │   ├── patch_safety.py           # PatchSafetyValidator: defensive security & syntax checks (Phase 5)
+│   │   ├── patch_workspace.py        # IsolatedPatchWorkspace: ephemeral workspace manager (Phase 5)
+│   │   └── patch_applier.py          # PatchApplier: workspace diff application & AST check (Phase 5)
+│   └── cli/                          # User interface and formatting layer
+│       ├── __init__.py               # Re-exports main CLI runner and reporters
+│       ├── cli.py                    # Command-line interface with --topology, --no-verify, --no-patch
+│       └── reporter.py               # Formatting engines (ANSI Terminal, Markdown, JSON, Patch Diffs)
+├── reposentinal/                     # Backward-compatibility bridge package (preserves Phase 1-5 APIs)
+│   ├── __init__.py                   # Top-level bridge forwarding to backend
+│   ├── models.py, hypothesis.py, patch_models.py
+│   ├── scanner.py, analyzer.py, indexer.py, context.py, hypothesis_engine.py, providers.py
+│   ├── verification.py, verifier.py, sandbox.py, test_generator.py
+│   ├── patch_verifier.py, patch_generator.py, patch_safety.py, patch_workspace.py, patch_applier.py
+│   └── cli.py, reporter.py
 ├── tests/
 │   ├── __init__.py
 │   ├── fixtures/
-│   │   ├── cross_file_repo/  # Multi-file vulnerable repository fixture (auth, orders, db)
-│   │   │   ├── auth_service.py
-│   │   │   ├── order_service.py
-│   │   │   └── db_gateway.py
-│   │   └── safe_repo/        # Safe fixture for false-positive validation
-│   │       ├── auth_service.py
-│   │       ├── safe_order_service.py
-│   │       └── db_gateway.py
-│   ├── sample_vulnerable_code.py  # Intentional vulnerability test fixture
-│   ├── test_scanner.py            # Scanner, heuristic, and orchestrator unit tests
-│   ├── test_indexer.py            # AST symbol extraction, resolution, and topology tests
-│   ├── test_hypothesis.py         # Hypothesis schema, cross-module reasoning, resilience tests
-│   ├── test_verification.py       # Adversarial generation, sandbox lifecycle, invariants tests
-│   └── test_patch.py              # Patch generation, workspace isolation, dual-phase verification tests
-├── pyproject.toml            # Package configuration & standard entrypoints
-└── requirements.txt          # Zero required runtime dependencies
+│   │   ├── cross_file_repo/          # Multi-file vulnerable repository fixture (auth, orders, db)
+│   │   └── safe_repo/                # Safe fixture for false-positive validation
+│   ├── sample_vulnerable_code.py      # Intentional vulnerability test fixture
+│   ├── test_scanner.py                # Scanner, heuristic, and orchestrator unit tests
+│   ├── test_indexer.py                # AST symbol extraction, resolution, and topology tests
+│   ├── test_hypothesis.py             # Hypothesis schema, cross-module reasoning, resilience tests
+│   ├── test_verification.py           # Adversarial generation, sandbox lifecycle, invariants tests
+│   ├── test_patch.py                  # Patch generation, workspace isolation, dual-phase verification tests
+│   └── test_backend_structure.py      # Modular backend architecture and subpackage isolation tests
+├── pyproject.toml                    # Package configuration & standard entrypoints
+└── requirements.txt                  # Zero required runtime dependencies
 ```
 
 ### Complete End-to-End Pipeline (Phase 5):

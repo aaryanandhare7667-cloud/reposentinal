@@ -1,79 +1,52 @@
 """
 RepoSentinel: Autonomous Bug Discovery Agent for GitHub Repositories.
+Compatibility package forwarding to backend.
 """
-__version__ = "0.5.0"
-
-from reposentinal.models import (
+from backend import (
+    __version__,
     Severity,
     BugFinding,
     FileContext,
     ScanSummary,
-)
-from reposentinal.indexer import (
     SymbolKind,
     Symbol,
     ImportStatement,
     DependencyGraph,
     RepositoryIndex,
     build_repository_index,
-)
-from reposentinal.hypothesis import (
     Confidence,
     BugStatus,
     BugHypothesis,
     HypothesisEvaluationMetrics,
-)
-from reposentinal.context import (
     RepositoryContext,
     RepositoryContextBuilder,
-)
-from reposentinal.hypothesis_engine import (
     BaseHypothesisEngine,
     RuleBasedHypothesisEngine,
     LLMHypothesisEngine,
-)
-from reposentinal.test_generator import (
     AdversarialTest,
     TestSafetyValidator,
     DeterministicTestGenerator,
-)
-from reposentinal.sandbox import (
     BaseSandbox,
     DockerSandbox,
     SafeSubprocessSandbox,
     get_sandbox_backend,
-)
-from reposentinal.verification import (
     VerificationStatus,
     ExecutionResult,
     VerificationEvidence,
-)
-from reposentinal.verifier import (
     HypothesisVerifier,
-)
-from reposentinal.patch_models import (
     PatchVerificationStatus,
     GeneratedPatch,
     PatchVerificationResult,
     PatchQualityMetrics,
-)
-from reposentinal.patch_safety import (
     PatchSafetyValidator,
-)
-from reposentinal.patch_workspace import (
     IsolatedPatchWorkspace,
-)
-from reposentinal.patch_applier import (
     PatchApplier,
-)
-from reposentinal.patch_generator import (
     DeterministicPatchGenerator,
-)
-from reposentinal.patch_verifier import (
     PatchVerifier,
 )
 
 __all__ = [
+    "__version__",
     "Severity",
     "BugFinding",
     "FileContext",

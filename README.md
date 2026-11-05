@@ -5,7 +5,7 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-success.svg)](requirements.txt)
-[![Tests Passing](https://img.shields.io/badge/tests-39%2F39%20passing-brightgreen.svg)](tests/)
+[![Tests Passing](https://img.shields.io/badge/tests-46%2F46%20passing-brightgreen.svg)](tests/)
 
 RepoSentinel is an autonomous bug discovery, adversarial verification, and automated patch remediation agent. It inspects repositories, identifies critical vulnerabilities and cross-module edge cases, generates reproduction tests, verifies bugs in an isolated sandbox, and synthesizes regression-tested unified diff patches.
 
@@ -190,6 +190,27 @@ Topology:       4 symbols (1 classes, 2 functions, 1 methods) | 2 inter-file dep
 
 ---
 
+## 📁 Repository Structure
+
+RepoSentinel uses a modular `backend/` architecture that separates data models, ingestion, static analysis, sandboxed verification, automated patching, and the CLI layer cleanly:
+
+```
+reposentinal/
+├── bin/
+│   └── reposentinal             # Standalone executable CLI launcher
+├── backend/                     # Modular core backend package
+│   ├── models/                  # Base models, BugHypothesis, GeneratedPatch
+│   ├── scanner/                 # Target cloning, directory walker, binary filter
+│   ├── analysis/                # AST symbol indexer, topology graph, hypothesis engines
+│   ├── verification/            # Sandboxes (Docker/Subprocess), test generator, verifier
+│   ├── patching/                # Patch verifier, generator, safety validator, workspace
+│   └── cli/                     # CLI entrypoint, argument parser, report generators
+├── reposentinal/                # Backward-compatibility bridge (preserves Phase 1-5 APIs)
+└── tests/                       # Automated regression and verification test suite
+```
+
+---
+
 ## 🧪 Automated Testing
 
 RepoSentinel includes an automated regression and verification test suite:
@@ -204,6 +225,7 @@ Tests run in standard Python with zero mock libraries or external dependencies:
 - Hypothesis schema, reasoning, and resilience tests (`tests/test_hypothesis.py`)
 - Adversarial test generation, sandbox lifecycle, invariants tests (`tests/test_verification.py`)
 - Patch generation, workspace isolation, dual-phase verification tests (`tests/test_patch.py`)
+- Modular backend subpackage architecture tests (`tests/test_backend_structure.py`)
 
 ---
 

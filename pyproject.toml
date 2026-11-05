@@ -34,4 +34,8 @@ dev = [
 ]
 
 [project.scripts]
-reposentinal = "reposentinal.cli:main"
+reposentinal = "backend.cli.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["backend*", "reposentinal*"]
