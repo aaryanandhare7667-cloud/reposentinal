@@ -41,17 +41,30 @@
 
 ---
 
-## Phase 4: Adversarial Test Generation & Sandboxed Verification (Next Up 🚀)
-- [ ] Implement deterministic test synthesizer that generates executable reproduction scripts for hypotheses
-- [ ] Build isolated/sandboxed execution environment (Docker or restricted subprocess)
-- [ ] Execute test scripts safely to independently verify hypotheses
-- [ ] Promote successfully reproduced hypotheses from `Likely Bug` to `Confirmed Bug`
-- [ ] Automatically filter out false positives when reproduction attempts prove the hypothesis invalid
+## Phase 4: Adversarial Test Generation & Sandboxed Verification (Completed ✅)
+- [x] Implemented `AdversarialTest` model and `DeterministicTestGenerator` synthesizing targeted reproduction scripts
+  - [x] Unchecked return / null assumption tests
+  - [x] SQL injection parameterization validation tests
+  - [x] Command injection `shell=True` tests
+  - [x] Insecure SSL `verify=False` configuration tests
+  - [x] Swallowed exception tests
+- [x] Built `TestSafetyValidator` to block dangerous or destructive system calls (`shutil.rmtree`, `rm -rf`, `os.remove`)
+- [x] Built isolated execution sandbox layer (`reposentinal/sandbox.py`)
+  - [x] `DockerSandbox` with network isolation (`--network=none`), memory limits (`--memory=256m`), and CPU limits (`--cpus=1`)
+  - [x] `SafeSubprocessSandbox` fallback: ephemeral workspace copying, host secret scrubbing, isolated python flags (`-I -s -B`), and timeout enforcement
+- [x] Implemented explicit verification states (`UNVERIFIED`, `REPRODUCED`, `NOT_REPRODUCED`, `INCONCLUSIVE`, `CONFIRMED`, `FALSE_POSITIVE`)
+- [x] Built `HypothesisVerifier` executing tests and enforcing deterministic confirmation invariant
+- [x] Differentiated true positives from false positives (safe rejection/handling observed)
+- [x] Added empirical research metrics (`tests_generated`, `tests_executed`, `reproduced_count`, `confirmed_count`, `false_positive_count`, `reproduction_rate`, `average_verification_seconds`)
+- [x] Added dedicated safe test fixture (`tests/fixtures/safe_repo/`)
+- [x] Added comprehensive unit and integration test suite (`tests/test_verification.py`, 27/27 tests passing)
+- [x] Added `--no-verify` and `--sandbox-backend` CLI flags
 
 ---
 
-## Phase 5: Autonomous Patch Synthesis & Pull Request Generator
+## Phase 5: Autonomous Patch Synthesis & Pull Request Generator (Next Up 🚀)
 - [ ] Generate syntactically valid unified diff patches (`.patch`) for confirmed bugs
-- [ ] Re-run verification tests against patched code to ensure zero regressions
-- [ ] Automated GitHub Action workflow for PR scanning
-- [ ] Automated PR comment bot / automated pull request creator
+- [ ] Re-run verification tests against patched code in the sandbox to ensure vulnerability is resolved
+- [ ] Verify zero regressions in existing test suite after patch application
+- [ ] Automated PR comment generator and branch patch committer
+- [ ] Automated GitHub Action workflow for CI/CD pull request scanning

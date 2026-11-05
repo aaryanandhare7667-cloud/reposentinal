@@ -50,6 +50,8 @@ class ScanSummary:
     topology_summary: Optional[Dict[str, Any]] = None
     hypotheses: List[Any] = field(default_factory=list)
     metrics: Optional[Dict[str, Any]] = None
+    verification_evidence: List[Any] = field(default_factory=list)
+    verification_metrics: Optional[Dict[str, Any]] = None
 
     @property
     def critical_count(self) -> int:
@@ -94,4 +96,8 @@ class ScanSummary:
             result["hypotheses"] = [h.to_dict() if hasattr(h, "to_dict") else h for h in self.hypotheses]
         if self.metrics is not None:
             result["metrics"] = self.metrics
+        if self.verification_evidence:
+            result["verification_evidence"] = [e.to_dict() if hasattr(e, "to_dict") else e for e in self.verification_evidence]
+        if self.verification_metrics is not None:
+            result["verification_metrics"] = self.verification_metrics
         return result

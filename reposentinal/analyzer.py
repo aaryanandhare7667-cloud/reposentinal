@@ -1,11 +1,14 @@
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+from typing import Callable, Optional, List, Dict, Any, Tuple
 from reposentinal.models import BugFinding, FileContext, ScanSummary, Severity
 from reposentinal.providers import BaseLLMProvider
 from reposentinal.indexer import build_repository_index, SymbolKind
 from reposentinal.context import RepositoryContextBuilder
 from reposentinal.hypothesis import BugHypothesis, HypothesisEvaluationMetrics, Confidence
 from reposentinal.hypothesis_engine import BaseHypothesisEngine, RuleBasedHypothesisEngine
+from reposentinal.verifier import HypothesisVerifier
 
 SEVERITY_ORDER = {
     Severity.CRITICAL: 0,
@@ -26,7 +29,7 @@ class RepoSentinelAgent:
     """
     Core bug discovery orchestrator.
     Manages concurrency, repository context synthesis, bug hypothesis generation,
-    deduplication, and research evaluation metrics.
+    adversarial test generation, sandboxed verification, deduplication, and research evaluation metrics.
     """
 
     def __init__(
@@ -35,13 +38,24 @@ class RepoSentinelAgent:
         max_workers: int = 4,
         on_file_scanned: Optional[Callable[[FileContext, int, int], None]] = None,
         hypothesis_engine: Optional[BaseHypothesisEngine] = None,
+        verifier: Optional[HypothesisVerifier] = None,
+        verify: bool = False,
+        target_root_dir: Optional[Path] = None,
     ):
         self.provider = provider
         self.max_workers = max_workers
         self.on_file_scanned = on_file_scanned
         self.hypothesis_engine = hypothesis_engine or RuleBasedHypothesisEngine()
+        self.verifier = verifier or HypothesisVerifier()
+        self.verify = verify
+        self.target_root_dir = target_root_dir
 
-    def analyze(self, target_name: str, files: List[FileContext]) -> ScanSummary:
+    def analyze(
+        self,
+        target_name: str,
+        files: List[FileContext],
+        root_dir: Optional[Path] = None,
+    ) -> ScanSummary:
         start_time = time.time()
         all_findings: List[BugFinding] = []
         total_lines = sum(f.line_count for f in files)
@@ -111,6 +125,25 @@ class RepoSentinelAgent:
                 seen_hyp_keys.add(key)
                 unique_hypotheses.append(h)
 
+        # Execute adversarial sandboxed verification if enabled
+        evidence_list = []
+        verification_metrics = None
+        if self.verify and unique_hypotheses:
+            eff_root = root_dir or self.target_root_dir
+            if not eff_root:
+                if Path(target_name).exists() and Path(target_name).is_dir():
+                    eff_root = Path(target_name).resolve()
+                elif files:
+                    eff_root = Path(files[0].abs_path).parent.resolve()
+                else:
+                    eff_root = Path(".").resolve()
+            else:
+                eff_root = Path(eff_root).resolve()
+
+            unique_hypotheses, evidence_list, verification_metrics = self.verifier.verify_all(
+                unique_hypotheses, eff_root
+            )
+
         # Ensure every hypothesis has a corresponding BugFinding for backwards compatibility
         for h in unique_hypotheses:
             key = (h.affected_file, h.line_start, h.title.strip().lower())
@@ -158,4 +191,6 @@ class RepoSentinelAgent:
             topology_summary=topology_summary,
             hypotheses=unique_hypotheses,
             metrics=metrics.to_dict(),
+            verification_evidence=evidence_list,
+            verification_metrics=verification_metrics,
         )

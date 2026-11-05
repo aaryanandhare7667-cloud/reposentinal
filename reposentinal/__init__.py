@@ -1,7 +1,7 @@
 """
 RepoSentinel: Autonomous Bug Discovery Agent for GitHub Repositories.
 """
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 from reposentinal.models import (
     Severity,
@@ -32,6 +32,25 @@ from reposentinal.hypothesis_engine import (
     RuleBasedHypothesisEngine,
     LLMHypothesisEngine,
 )
+from reposentinal.test_generator import (
+    AdversarialTest,
+    TestSafetyValidator,
+    DeterministicTestGenerator,
+)
+from reposentinal.sandbox import (
+    BaseSandbox,
+    DockerSandbox,
+    SafeSubprocessSandbox,
+    get_sandbox_backend,
+)
+from reposentinal.verification import (
+    VerificationStatus,
+    ExecutionResult,
+    VerificationEvidence,
+)
+from reposentinal.verifier import (
+    HypothesisVerifier,
+)
 
 __all__ = [
     "Severity",
@@ -53,4 +72,15 @@ __all__ = [
     "BaseHypothesisEngine",
     "RuleBasedHypothesisEngine",
     "LLMHypothesisEngine",
+    "AdversarialTest",
+    "TestSafetyValidator",
+    "DeterministicTestGenerator",
+    "BaseSandbox",
+    "DockerSandbox",
+    "SafeSubprocessSandbox",
+    "get_sandbox_backend",
+    "VerificationStatus",
+    "ExecutionResult",
+    "VerificationEvidence",
+    "HypothesisVerifier",
 ]

@@ -46,6 +46,20 @@ def get_confidence_badge(conf) -> str:
         return f"{DIM}(Low Conf){RESET}"
 
 
+def get_verification_badge(status) -> str:
+    status_val = status.value if hasattr(status, "value") else str(status)
+    if status_val == "REPRODUCED":
+        return f"{GREEN}{BOLD}[REPRODUCED]{RESET}"
+    elif status_val == "CONFIRMED":
+        return f"{GREEN}{BOLD}[CONFIRMED]{RESET}"
+    elif status_val == "FALSE_POSITIVE":
+        return f"{YELLOW}{BOLD}[FALSE POSITIVE]{RESET}"
+    elif status_val == "NOT_REPRODUCED":
+        return f"{CYAN}[NOT REPRODUCED]{RESET}"
+    else:
+        return f"{DIM}[INCONCLUSIVE]{RESET}"
+
+
 class TerminalReporter:
     @staticmethod
     def print_banner():
@@ -130,6 +144,20 @@ class TerminalReporter:
             print(f"{GREEN}{BOLD}✨ All clear! No bugs or security flaws identified.{RESET}\n")
             return
 
+        # Render Verification Evidence if available
+        if summary.verification_evidence:
+            print(f"{BOLD}{GREEN}--- Adversarial Sandboxed Verification Evidence ({len(summary.verification_evidence)}) ---{RESET}\n")
+            for idx, ev in enumerate(summary.verification_evidence, start=1):
+                vbadge = get_verification_badge(ev.status)
+                print(f"{BOLD}{idx}. {vbadge} {WHITE}Test {ev.test_id}{RESET} -> Target {CYAN}{ev.hypothesis_id}{RESET} ({ev.execution.sandbox_backend}, {ev.execution.duration_seconds:.2f}s)")
+                if ev.reproduction_trace:
+                    print(f"   {DIM}Reproduction:{RESET} {GREEN}{ev.reproduction_trace}{RESET}")
+                if ev.failure_reason:
+                    print(f"   {DIM}Outcome:{RESET}      {YELLOW}{ev.failure_reason}{RESET}")
+                if ev.verification_notes and ev.verification_notes != ev.reproduction_trace:
+                    print(f"   {DIM}Notes:{RESET}        {ev.verification_notes}")
+                print()
+
         # Summary Breakdown
         print(f"{BOLD}----------------- Scan Summary Breakdown -----------------{RESET}")
         print(f"  {BG_RED}{WHITE} CRITICAL {RESET} : {summary.critical_count}")
@@ -138,8 +166,12 @@ class TerminalReporter:
         print(f"  {CYAN} LOW      {RESET} : {summary.low_count}")
         if summary.metrics:
             m = summary.metrics
-            print(f"  {BOLD} STATUS   {RESET} : Likely={m.get('by_status', {}).get('Likely Bug', 0)} | Potential={m.get('by_status', {}).get('Potential Bug', 0)} | Confirmed={m.get('by_status', {}).get('Confirmed Bug', 0)}")
+            print(f"  {BOLD} STATUS   {RESET} : Confirmed={m.get('by_status', {}).get('Confirmed Bug', 0)} | Likely={m.get('by_status', {}).get('Likely Bug', 0)} | Potential={m.get('by_status', {}).get('Potential Bug', 0)}")
             print(f"  {BOLD} RESEARCH {RESET} : Cross-File Interactions={m.get('cross_file_count', 0)} ({int(m.get('cross_file_ratio', 0)*100)}%) | Symbol Mapped={m.get('symbol_mapped_count', 0)}")
+        if summary.verification_metrics:
+            vm = summary.verification_metrics
+            print(f"  {BOLD} VERIFIED {RESET} : Confirmed={vm.get('confirmed_count', 0)} | Reproduced={vm.get('reproduced_count', 0)} | False Positives={vm.get('false_positive_count', 0)} | Inconclusive={vm.get('inconclusive_count', 0)}")
+            print(f"  {BOLD} SANDBOX  {RESET} : Backend={vm.get('sandbox_backend', 'none')} | Repro Rate={int(vm.get('reproduction_rate', 0)*100)}% | Avg Duration={vm.get('average_verification_seconds', 0)}s")
         print(f"  {BOLD} TOTAL    {RESET} : {len(summary.hypotheses or summary.findings)}")
         print(f"{BOLD}----------------------------------------------------------{RESET}\n")
 
@@ -148,7 +180,7 @@ class MarkdownReporter:
     @staticmethod
     def render(summary: ScanSummary) -> str:
         md = []
-        md.append("# 🛡️ RepoSentinel Bug Discovery & Hypothesis Report\n")
+        md.append("# 🛡️ RepoSentinel Bug Discovery & Verification Report\n")
         md.append(f"- **Target**: `{summary.target}`")
         md.append(f"- **Provider**: `{summary.provider_used}`")
         md.append(f"- **Files Scanned**: {summary.scanned_files} ({summary.total_lines:,} lines)")
@@ -168,9 +200,17 @@ class MarkdownReporter:
 
         if summary.metrics:
             m = summary.metrics
+            md.append(f"| 🎯 Confirmed Bugs (Verified) | {m.get('by_status', {}).get('Confirmed Bug', 0)} |")
             md.append(f"| 🔍 Likely Bugs | {m.get('by_status', {}).get('Likely Bug', 0)} |")
             md.append(f"| 💡 Potential Bugs | {m.get('by_status', {}).get('Potential Bug', 0)} |")
             md.append(f"| 🌐 Cross-Module Interactions | {m.get('cross_file_count', 0)} |")
+
+        if summary.verification_metrics:
+            vm = summary.verification_metrics
+            md.append(f"| 🧪 Adversarial Tests Executed | {vm.get('tests_executed', 0)} |")
+            md.append(f"| 🛡️ False Positives Prevented | {vm.get('false_positive_count', 0)} |")
+            md.append(f"| ❓ Inconclusive Tests | {vm.get('inconclusive_count', 0)} |")
+            md.append(f"| ⚡ Reproduction Rate | {int(vm.get('reproduction_rate', 0)*100)}% |")
 
         items_count = len(summary.hypotheses or summary.findings)
         md.append(f"| **Total Hypotheses** | **{items_count}** |\n")
@@ -178,6 +218,17 @@ class MarkdownReporter:
         if not items_count:
             md.append("✅ **No bugs or security flaws were found.**\n")
             return "\n".join(md)
+
+        if summary.verification_evidence:
+            md.append("## 🧪 Adversarial Sandboxed Verification Evidence\n")
+            md.append("| Test ID | Hypothesis | Status | Backend | Duration | Trace / Finding |")
+            md.append("|---|---|---|---|---|---|")
+            for ev in summary.verification_evidence:
+                trace_summary = ev.reproduction_trace or ev.failure_reason or ev.verification_notes or "N/A"
+                trace_summary = trace_summary.replace("\n", " ")[:80]
+                status_str = f"**{ev.status.value}**" if hasattr(ev.status, "value") else str(ev.status)
+                md.append(f"| `{ev.test_id}` | `{ev.hypothesis_id}` | {status_str} | `{ev.execution.sandbox_backend}` | {ev.execution.duration_seconds:.2f}s | {trace_summary} |")
+            md.append("\n---\n")
 
         if summary.hypotheses:
             md.append("## 🔍 Repository-Aware Bug Hypotheses\n")

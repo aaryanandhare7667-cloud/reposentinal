@@ -40,6 +40,7 @@ class BugHypothesis:
     related_symbols: List[str] = field(default_factory=list)
     code_snippet: str = ""
     remediation: str = ""
+    is_verified: bool = False
 
     def validate(self) -> None:
         """
@@ -63,8 +64,13 @@ class BugHypothesis:
 
         # Invariant: Hypotheses cannot be marked 'Confirmed Bug' without independent execution proof
         # LLM or static generation can only produce POTENTIAL or LIKELY
-        if self.status == BugStatus.CONFIRMED:
+        if self.status == BugStatus.CONFIRMED and not self.is_verified:
             raise ValueError("Hypotheses cannot be self-marked as 'Confirmed Bug' without deterministic reproduction")
+
+    def confirm(self) -> None:
+        """Promote hypothesis to Confirmed Bug based on verified execution evidence."""
+        self.is_verified = True
+        self.status = BugStatus.CONFIRMED
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -84,6 +90,7 @@ class BugHypothesis:
             "suggested_test": self.suggested_test,
             "code_snippet": self.code_snippet,
             "remediation": self.remediation,
+            "is_verified": self.is_verified,
         }
 
     @classmethod
@@ -96,11 +103,14 @@ class BugHypothesis:
         conf_str = str(data.get("confidence", "MEDIUM")).upper()
         confidence = Confidence.__members__.get(conf_str, Confidence.MEDIUM)
 
-        # Safe status parsing - enforce that status cannot be Confirmed Bug from input
+        # Safe status parsing - enforce that status cannot be Confirmed Bug without verification
+        is_verified = bool(data.get("is_verified", False))
         status_val = data.get("status", BugStatus.POTENTIAL.value)
-        if status_val == BugStatus.CONFIRMED.value:
+        if status_val == BugStatus.CONFIRMED.value and not is_verified:
             # Automatically downgrade unverified claims of 'Confirmed' to 'Likely Bug'
             status = BugStatus.LIKELY
+        elif status_val == BugStatus.CONFIRMED.value and is_verified:
+            status = BugStatus.CONFIRMED
         elif status_val == BugStatus.LIKELY.value or status_val == "LIKELY":
             status = BugStatus.LIKELY
         else:

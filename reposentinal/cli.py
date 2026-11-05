@@ -11,6 +11,8 @@ from reposentinal.reporter import TerminalReporter, MarkdownReporter, JSONReport
 from reposentinal.scanner import prepare_target, scan_repository
 from reposentinal.indexer import build_repository_index
 from reposentinal.hypothesis_engine import RuleBasedHypothesisEngine, LLMHypothesisEngine
+from reposentinal.sandbox import get_sandbox_backend
+from reposentinal.verifier import HypothesisVerifier
 
 
 def parse_args():
@@ -94,6 +96,17 @@ Examples:
         action="store_true",
         help="Display detailed repository symbol index and dependency topology graph",
     )
+    parser.add_argument(
+        "--no-verify",
+        action="store_true",
+        help="Disable adversarial test generation and sandboxed verification",
+    )
+    parser.add_argument(
+        "--sandbox-backend",
+        choices=["auto", "docker", "subprocess"],
+        default="auto",
+        help="Sandbox backend for executing generated tests (default: auto)",
+    )
 
     return parser.parse_args()
 
@@ -167,15 +180,22 @@ def main():
                 base_url=base_url,
             )
 
-        print(f"🚀 Launching Sentinel Agent with {type(provider).__name__} ({args.workers} workers)...")
+        sandbox = get_sandbox_backend(args.sandbox_backend)
+        verifier = HypothesisVerifier(sandbox=sandbox)
+
+        ver_info = f", sandbox={sandbox.backend_name}" if not args.no_verify else ", verification=disabled"
+        print(f"🚀 Launching Sentinel Agent with {type(provider).__name__} ({args.workers} workers{ver_info})...")
         agent = RepoSentinelAgent(
             provider=provider,
             max_workers=args.workers,
             on_file_scanned=on_progress,
             hypothesis_engine=hyp_engine,
+            verifier=verifier,
+            verify=not args.no_verify,
+            target_root_dir=target_path,
         )
 
-        summary = agent.analyze(target_name=target_str, files=files)
+        summary = agent.analyze(target_name=target_str, files=files, root_dir=target_path)
         # Clear progress line
         sys.stdout.write("\r" + " " * 80 + "\r")
         sys.stdout.flush()
