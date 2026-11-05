@@ -1,10 +1,9 @@
 import { request } from './api';
-import { mockFindings } from '../data/mockData';
 
 export const findingsService = {
   async getFindings(filters = {}) {
     const live = await request('/findings');
-    let findings = live || mockFindings;
+    let findings = live !== null ? live : [];
 
     if (filters.severity) {
       findings = findings.filter((f) => f.severity.toLowerCase() === filters.severity.toLowerCase());
@@ -20,8 +19,7 @@ export const findingsService = {
 
   async getFindingById(id) {
     const live = await request(`/findings/${id}`);
-    if (live) return live;
-    return mockFindings.find((f) => f.id === id) || null;
+    return live || null;
   },
 };
 

@@ -20,35 +20,21 @@ import { scanService } from '../services/scanService';
 export function NewScan() {
   const navigate = useNavigate();
   const [targetPath, setTargetPath] = useState('tests/fixtures/cross_file_repo/');
-  const [provider, setProvider] = useState('MockProvider');
-  const [sandboxBackend, setSandboxBackend] = useState('safe_subprocess');
+  const [provider, setProvider] = useState('mock');
+  const [sandboxBackend, setSandboxBackend] = useState('subprocess');
   const [enableTopology, setEnableTopology] = useState(true);
   const [enableVerify, setEnableVerify] = useState(true);
   const [enablePatch, setEnablePatch] = useState(true);
   const [maxFiles, setMaxFiles] = useState(50);
   const [isScanning, setIsScanning] = useState(false);
-  const [scanStage, setScanStage] = useState(0);
-
-  const stages = [
-    'Preparing repository target & cloning scope...',
-    'Scanning source files & filtering binary noise...',
-    'Building AST symbol index & dependency topology graph...',
-    'Generating cross-module bug hypotheses...',
-    'Synthesizing adversarial reproduction tests...',
-    'Executing tests in isolated execution sandbox...',
-    'Applying candidate patches in ephemeral isolated workspace...',
-    'Running dual-phase verification (repro re-test + regression tests)...',
-  ];
+  const [currentFile, setCurrentFile] = useState('');
+  const [progressCount, setProgressCount] = useState({ current: 0, total: 0 });
+  const [statusMessage, setStatusMessage] = useState('Initiating scan with backend...');
 
   const handleLaunch = async (e) => {
     e.preventDefault();
     setIsScanning(true);
-
-    // Simulate animated scanning progress through stages
-    for (let i = 0; i < stages.length; i++) {
-      setScanStage(i);
-      await new Promise((r) => setTimeout(r, 450));
-    }
+    setStatusMessage('Initiating scan with real backend...');
 
     const newScan = await scanService.triggerScan({
       targetPath,
@@ -60,8 +46,43 @@ export function NewScan() {
       maxFiles: parseInt(maxFiles, 10),
     });
 
-    setIsScanning(false);
-    navigate(`/scans/${newScan.id}`);
+    if (!newScan || !newScan.id) {
+      setIsScanning(false);
+      return;
+    }
+
+    // Live polling until backend marks scan COMPLETED or FAILED
+    const startTime = Date.now();
+    const interval = setInterval(async () => {
+      const live = await scanService.getScanById(newScan.id);
+      if (live) {
+        if (live.progress) {
+          setProgressCount({
+            current: live.progress.current || 0,
+            total: live.progress.total || 0,
+          });
+          if (live.progress.currentFile) {
+            setCurrentFile(live.progress.currentFile);
+            setStatusMessage(`Analyzing [${live.progress.current}/${live.progress.total}] -> ${live.progress.currentFile}`);
+          } else if (live.status === 'RUNNING') {
+            setStatusMessage('Synthesizing AST topology and running sandboxed tests...');
+          }
+        }
+
+        if (live.status === 'COMPLETED' || live.status === 'FAILED') {
+          clearInterval(interval);
+          setIsScanning(false);
+          navigate(`/scans/${newScan.id}`);
+        }
+      }
+
+      // Safeguard timeout (15s)
+      if (Date.now() - startTime > 15000) {
+        clearInterval(interval);
+        setIsScanning(false);
+        navigate(`/scans/${newScan.id}`);
+      }
+    }, 400);
   };
 
   return (
@@ -114,10 +135,10 @@ export function NewScan() {
                     onChange={(e) => setProvider(e.target.value)}
                     className="w-full px-3 py-2 bg-bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
                   >
-                    <option value="MockProvider">MockProvider (Offline Heuristics)</option>
-                    <option value="GeminiProvider">Google Gemini (REST API)</option>
-                    <option value="OpenAIProvider">OpenAI / DeepSeek (v1 API)</option>
-                    <option value="OllamaProvider">Ollama (Local Open-Source)</option>
+                    <option value="mock">MockProvider (Offline Heuristics)</option>
+                    <option value="gemini">Google Gemini (REST API)</option>
+                    <option value="openai">OpenAI / DeepSeek (v1 API)</option>
+                    <option value="ollama">Ollama (Local Open-Source)</option>
                   </select>
                 </div>
 
@@ -130,7 +151,7 @@ export function NewScan() {
                     onChange={(e) => setSandboxBackend(e.target.value)}
                     className="w-full px-3 py-2 bg-bg-surface border border-border rounded text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
                   >
-                    <option value="safe_subprocess">SafeSubprocessSandbox (Isolated Process)</option>
+                    <option value="subprocess">SafeSubprocessSandbox (Isolated Process)</option>
                     <option value="docker">DockerSandbox (Containerized --network=none)</option>
                     <option value="auto">Auto (Docker preferred with fallback)</option>
                   </select>
@@ -138,73 +159,123 @@ export function NewScan() {
               </div>
 
               {/* Pipeline Flags */}
-              <div className="pt-3 border-t border-border space-y-3">
-                <span className="block text-text-secondary font-semibold uppercase text-[10px] tracking-wider">
-                  Analysis & Remediation Toggles
-                </span>
+              <div className="pt-2 border-t border-border space-y-3">
+                <div className="text-text-secondary font-semibold">Execution Pipeline Phases</div>
 
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded bg-bg-surface border border-border hover:border-text-muted transition-colors">
                     <input
                       type="checkbox"
                       checked={enableTopology}
                       onChange={(e) => setEnableTopology(e.target.checked)}
-                      className="rounded border-border text-brand-600 focus:ring-0 bg-bg-surface"
+                      className="rounded bg-bg-card border-border text-brand-500 focus:ring-0"
                     />
-                    <span className="text-text-primary font-medium">Build Repository Topology Graph (`--topology`)</span>
+                    <span>Phase 2: Topology</span>
                   </label>
 
-                  <label className="flex items-center gap-2 cursor-pointer">
+                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded bg-bg-surface border border-border hover:border-text-muted transition-colors">
                     <input
                       type="checkbox"
                       checked={enableVerify}
                       onChange={(e) => setEnableVerify(e.target.checked)}
-                      className="rounded border-border text-brand-600 focus:ring-0 bg-bg-surface"
+                      className="rounded bg-bg-card border-border text-brand-500 focus:ring-0"
                     />
-                    <span className="text-text-primary font-medium">
-                      Execute Sandboxed Adversarial Verification (Default: Enabled)
-                    </span>
+                    <span>Phase 4: Sandboxed Verification</span>
                   </label>
 
-                  <label className="flex items-center gap-2 cursor-pointer">
+                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded bg-bg-surface border border-border hover:border-text-muted transition-colors">
                     <input
                       type="checkbox"
                       checked={enablePatch}
                       onChange={(e) => setEnablePatch(e.target.checked)}
-                      className="rounded border-border text-brand-600 focus:ring-0 bg-bg-surface"
+                      className="rounded bg-bg-card border-border text-brand-500 focus:ring-0"
                     />
-                    <span className="text-text-primary font-medium">
-                      Synthesize & Verify Candidate Patches in Isolated Workspace
-                    </span>
+                    <span>Phase 5: Auto Patches</span>
                   </label>
                 </div>
               </div>
 
-              {/* Submit Button */}
-              <div className="pt-4 border-t border-border flex justify-end gap-3">
-                <Button variant="outline" onClick={() => navigate('/')}>
+              {/* Maximum Files Slider */}
+              <div className="space-y-1.5 pt-2 border-t border-border">
+                <div className="flex justify-between items-center text-text-secondary">
+                  <span>File Scan Budget</span>
+                  <span className="font-bold text-text-primary">{maxFiles} files max</span>
+                </div>
+                <input
+                  type="range"
+                  min="5"
+                  max="200"
+                  step="5"
+                  value={maxFiles}
+                  onChange={(e) => setMaxFiles(e.target.value)}
+                  className="w-full accent-brand-500"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-4 flex items-center justify-end gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => navigate('/scans')}
+                >
                   Cancel
                 </Button>
-                <Button variant="primary" type="submit" icon={Play} disabled={isScanning}>
-                  {isScanning ? 'Executing Scan...' : 'Start Scan'}
+                <Button
+                  type="submit"
+                  variant="primary"
+                  className="flex items-center gap-2 px-5"
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>Start Autonomous Scan</span>
                 </Button>
               </div>
             </form>
           </Card>
         </div>
 
-        {/* Right Info: Safety & Invariant Guarantees */}
+        {/* Right Panel: Informational Architecture */}
         <div className="space-y-4">
-          <Card title="Security & Isolation Invariants">
-            <div className="space-y-3 text-xs font-mono text-text-secondary leading-relaxed">
-              <div className="p-2.5 rounded bg-bg-surface border border-solid border-emerald-500/40">
-                <div className="text-emerald-400 font-semibold mb-1 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Host Filesystem Untouched</span>
+          <Card title="Autonomous Pipeline Workflow">
+            <div className="space-y-3 font-mono text-xs text-text-muted">
+              <div className="flex items-start gap-2.5">
+                <div className="w-5 h-5 rounded bg-bg-surface border border-border flex items-center justify-center text-[10px] text-brand-400 font-bold shrink-0 mt-0.5">
+                  1
                 </div>
-                <p className="text-[11px] text-text-muted">
-                  Patches and reproduction tests are generated and executed strictly within ephemeral workspaces. Your local repository files are never modified.
-                </p>
+                <div>
+                  <strong className="text-text-primary block">Repository Scan & AST Index</strong>
+                  Walks filesystem, extracts classes, functions, calls, and imports without code execution.
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5">
+                <div className="w-5 h-5 rounded bg-bg-surface border border-border flex items-center justify-center text-[10px] text-brand-400 font-bold shrink-0 mt-0.5">
+                  2
+                </div>
+                <div>
+                  <strong className="text-text-primary block">Repository-Aware Hypothesis</strong>
+                  Synthesizes cross-file bug hypotheses based on contract mismatches and tainted sinks.
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5">
+                <div className="w-5 h-5 rounded bg-bg-surface border border-border flex items-center justify-center text-[10px] text-brand-400 font-bold shrink-0 mt-0.5">
+                  3
+                </div>
+                <div>
+                  <strong className="text-text-primary block">Ephemeral Sandboxed Verification</strong>
+                  Executes targeted adversarial tests inside isolated jail to prove vulnerability presence.
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5">
+                <div className="w-5 h-5 rounded bg-bg-surface border border-border flex items-center justify-center text-[10px] text-brand-400 font-bold shrink-0 mt-0.5">
+                  4
+                </div>
+                <div>
+                  <strong className="text-text-primary block">Automated Patch & Regression Verification</strong>
+                  Generates minimal safe unified diffs and validates via reproduction re-test and regression suite.
+                </div>
               </div>
 
               <div className="p-2.5 rounded bg-bg-surface border border-dashed border-indigo-400/40">
@@ -234,7 +305,7 @@ export function NewScan() {
                 RepoSentinel Agent Executing
               </h3>
               <p className="text-xs font-mono text-brand-400 mt-1">
-                {stages[scanStage]}
+                {statusMessage}
               </p>
             </div>
 
@@ -242,12 +313,18 @@ export function NewScan() {
             <div className="w-full bg-bg-surface rounded-full h-1.5 overflow-hidden border border-border">
               <div
                 className="bg-brand-500 h-full transition-all duration-300"
-                style={{ width: `${((scanStage + 1) / stages.length) * 100}%` }}
+                style={{
+                  width: progressCount.total > 0
+                    ? `${Math.max(10, (progressCount.current / progressCount.total) * 100)}%`
+                    : '45%'
+                }}
               />
             </div>
 
             <div className="text-[11px] font-mono text-text-muted">
-              Stage {scanStage + 1} of {stages.length}
+              {progressCount.total > 0
+                ? `Processed ${progressCount.current} of ${progressCount.total} files`
+                : 'Isolated execution sandbox active'}
             </div>
           </div>
         </div>

@@ -21,15 +21,18 @@ export function FindingsList() {
   }, []);
 
   const filtered = findings.filter((f) => {
+    const fileStr = f.affectedFile || f.file || '';
+    const symStr = f.affectedSymbol || f.symbol || '';
+    const titleStr = f.title || '';
     const matchesSearch =
-      f.title.toLowerCase().includes(search.toLowerCase()) ||
-      f.affectedFile.toLowerCase().includes(search.toLowerCase()) ||
-      f.affectedSymbol.toLowerCase().includes(search.toLowerCase());
+      titleStr.toLowerCase().includes(search.toLowerCase()) ||
+      fileStr.toLowerCase().includes(search.toLowerCase()) ||
+      symStr.toLowerCase().includes(search.toLowerCase());
     const matchesSev = severityFilter === 'ALL' || f.severity === severityFilter;
     const matchesStatus =
       statusFilter === 'ALL' ||
-      (statusFilter === 'CONFIRMED' && f.status === 'Confirmed Bug') ||
-      (statusFilter === 'AI_CLAIM' && f.isAiGenerated);
+      (statusFilter === 'CONFIRMED' && (f.status === 'Confirmed Bug' || f.isVerified)) ||
+      (statusFilter === 'AI_CLAIM' && (f.isAiGenerated || !f.isVerified));
     return matchesSearch && matchesSev && matchesStatus;
   });
 
@@ -92,7 +95,12 @@ export function FindingsList() {
 
       {/* Findings List */}
       <div className="space-y-3">
-        {filtered.map((f) => (
+        {filtered.length === 0 ? (
+          <div className="p-12 text-center rounded bg-bg-card border border-border text-xs font-mono text-text-muted">
+            No findings in the scanned scope
+          </div>
+        ) : (
+          filtered.map((f) => (
           <div
             key={f.id}
             className={`p-4 rounded bg-bg-card transition-colors ${
@@ -166,7 +174,7 @@ export function FindingsList() {
               )}
             </div>
           </div>
-        ))}
+        )))}
       </div>
     </div>
   );

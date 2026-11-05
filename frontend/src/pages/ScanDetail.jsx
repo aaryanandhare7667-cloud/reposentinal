@@ -29,16 +29,36 @@ export function ScanDetail() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let timer = null;
+    let isMounted = true;
+
     async function loadScanData() {
       const s = await scanService.getScanById(id);
-      const f = await findingsService.getFindings({ scanId: id });
-      const p = await patchService.getPatches();
-      setScan(s);
-      setFindings(f.length > 0 ? f : await findingsService.getFindings());
-      setPatches(p);
-      setLoading(false);
+      if (!isMounted) return;
+
+      if (s) {
+        setScan(s);
+        const f = await findingsService.getFindings({ scanId: id });
+        const p = await patchService.getPatches();
+        if (isMounted) {
+          setFindings(f.length > 0 ? f : await findingsService.getFindings());
+          setPatches(p);
+          setLoading(false);
+        }
+
+        if (s.status === 'RUNNING' || s.status === 'QUEUED') {
+          timer = setTimeout(loadScanData, 1000);
+        }
+      } else {
+        setLoading(false);
+      }
     }
+
     loadScanData();
+    return () => {
+      isMounted = false;
+      if (timer) clearTimeout(timer);
+    };
   }, [id]);
 
   if (loading) return <LoadingState message="Loading scan execution artifacts..." />;

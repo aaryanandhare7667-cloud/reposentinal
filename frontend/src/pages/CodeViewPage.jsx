@@ -99,7 +99,9 @@ export default function CodeViewPage() {
     loadData();
   }, [currentFile]);
 
-  const activeFinding = findings.find(f => f.file === currentFile);
+  const activeFinding = findings.find(
+    (f) => (f.file || f.affectedFile) === currentFile || (f.affectedFile || f.file)?.endsWith(currentFile) || (currentFile && (f.affectedFile || f.file)?.includes(currentFile))
+  );
 
   const handleSelectFile = (path) => {
     setCurrentFile(path);

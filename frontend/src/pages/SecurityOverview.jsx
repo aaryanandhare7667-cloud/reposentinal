@@ -98,7 +98,11 @@ export function SecurityOverview() {
         />
         <MetricCard
           title="Sandbox Repro Rate"
-          value={latestScan.verificationMetrics?.reproductionRate || '100%'}
+          value={
+            latestScan.verificationMetrics?.reproductionRate !== undefined
+              ? `${Math.round(latestScan.verificationMetrics.reproductionRate * 100)}%`
+              : (scans.length > 0 ? '0%' : 'Not Run')
+          }
           subvalue="Deterministic execution"
           icon={FlaskConical}
           variant="cyan"
@@ -106,7 +110,11 @@ export function SecurityOverview() {
         <MetricCard
           title="Verified Patches"
           value={verifiedPatches.length}
-          subvalue={`${latestScan.patchMetrics?.fixRate || '100%'} Fix Rate`}
+          subvalue={
+            scans.length > 0
+              ? `${latestScan.patchMetrics?.patch_verification_rate ? Math.round(latestScan.patchMetrics.patch_verification_rate * 100) : 100}% Fix Rate`
+              : 'Unavailable'
+          }
           icon={CheckCircle2}
           variant="success"
         />
@@ -133,7 +141,12 @@ export function SecurityOverview() {
             }
           >
             <div className="divide-y divide-border">
-              {confirmedFindings.map((finding) => (
+              {confirmedFindings.length === 0 ? (
+                <div className="py-8 text-center text-xs font-mono text-text-muted">
+                  No findings in the scanned scope
+                </div>
+              ) : (
+                confirmedFindings.map((finding) => (
                 <div key={finding.id} className="py-3 first:pt-0 last:pb-0">
                   <div className="flex items-start justify-between gap-3 mb-1.5">
                     <div>
@@ -181,7 +194,7 @@ export function SecurityOverview() {
                     )}
                   </div>
                 </div>
-              ))}
+              )))}
             </div>
           </Card>
 
