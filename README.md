@@ -8,6 +8,8 @@
 
 RepoSentinel is an autonomous pair-programming and security agent that inspects codebases, identifies critical vulnerabilities, unhandled edge cases, logic bugs, and resource leaks, and generates actionable remediation guidance with code fixes.
 
+📖 **Documentation**: See [CURRENT_STATE.md](CURRENT_STATE.md) for the architectural assessment and [TODO.md](TODO.md) for the active engineering roadmap.
+
 ---
 
 ## 🌟 Key Features
