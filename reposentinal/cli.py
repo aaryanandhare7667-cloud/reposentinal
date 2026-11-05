@@ -10,6 +10,7 @@ from reposentinal.providers import get_provider
 from reposentinal.reporter import TerminalReporter, MarkdownReporter, JSONReporter
 from reposentinal.scanner import prepare_target, scan_repository
 from reposentinal.indexer import build_repository_index
+from reposentinal.hypothesis_engine import RuleBasedHypothesisEngine, LLMHypothesisEngine
 
 
 def parse_args():
@@ -156,11 +157,22 @@ def main():
             sys.stdout.write(f"\r🤖 Analyzing [{current}/{total}] ({pct}%) -> {file_ctx.rel_path[:40]:<40}")
             sys.stdout.flush()
 
+        if provider_name == "mock" or args.dry_run:
+            hyp_engine = RuleBasedHypothesisEngine()
+        else:
+            hyp_engine = LLMHypothesisEngine(
+                provider_name=provider_name,
+                api_key=api_key,
+                model=model,
+                base_url=base_url,
+            )
+
         print(f"🚀 Launching Sentinel Agent with {type(provider).__name__} ({args.workers} workers)...")
         agent = RepoSentinelAgent(
             provider=provider,
             max_workers=args.workers,
             on_file_scanned=on_progress,
+            hypothesis_engine=hyp_engine,
         )
 
         summary = agent.analyze(target_name=target_str, files=files)

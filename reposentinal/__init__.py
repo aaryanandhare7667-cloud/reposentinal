@@ -1,7 +1,7 @@
 """
 RepoSentinel: Autonomous Bug Discovery Agent for GitHub Repositories.
 """
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 from reposentinal.models import (
     Severity,
@@ -17,6 +17,21 @@ from reposentinal.indexer import (
     RepositoryIndex,
     build_repository_index,
 )
+from reposentinal.hypothesis import (
+    Confidence,
+    BugStatus,
+    BugHypothesis,
+    HypothesisEvaluationMetrics,
+)
+from reposentinal.context import (
+    RepositoryContext,
+    RepositoryContextBuilder,
+)
+from reposentinal.hypothesis_engine import (
+    BaseHypothesisEngine,
+    RuleBasedHypothesisEngine,
+    LLMHypothesisEngine,
+)
 
 __all__ = [
     "Severity",
@@ -29,4 +44,13 @@ __all__ = [
     "DependencyGraph",
     "RepositoryIndex",
     "build_repository_index",
+    "Confidence",
+    "BugStatus",
+    "BugHypothesis",
+    "HypothesisEvaluationMetrics",
+    "RepositoryContext",
+    "RepositoryContextBuilder",
+    "BaseHypothesisEngine",
+    "RuleBasedHypothesisEngine",
+    "LLMHypothesisEngine",
 ]

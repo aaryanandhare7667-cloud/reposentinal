@@ -16,15 +16,17 @@ RepoSentinel is an autonomous pair-programming and security agent that inspects 
 
 - **Multi-Language Detection**: Scans Python, TypeScript, JavaScript, Go, Rust, Java, C/C++, Ruby, PHP, SQL, Shell, and more.
 - **Repository-Aware Symbol Index & Topology**: AST-based symbol extraction (classes, functions, methods, parameters, docstrings) and automated inter-file dependency graph mapping (`--topology`).
+- **Repository-Aware Bug Hypothesis Engine**: Discovers inter-module vulnerabilities, unchecked return assumptions, and cross-file data flows with concrete reproduction test scenarios.
+- **Strict Confirmation Invariants**: Clearly categorizes issues into `Potential Bug`, `Likely Bug`, and `Confirmed Bug` (prevents LLMs from prematurely certifying unverified hypotheses).
 - **Dual Engine Architecture**:
   - **Static Heuristic Engine**: Zero-network offline heuristics to catch command injections, hardcoded secrets, SQL injection formatting, swallowed exceptions, and unclosed resources.
-  - **LLM Agent Engine**: Deep semantic reasoning powered by Google Gemini, OpenAI, DeepSeek, or local models via Ollama.
+  - **LLM Agent Engine**: Deep semantic reasoning powered by Google Gemini, OpenAI, DeepSeek, or local models via Ollama enriched with cross-file repository context.
 - **Zero Required External Dependencies**: Engineered on the Python standard library—runs anywhere Python 3.9+ is installed without `pip install` hurdles.
 - **Remote & Local Ingestion**: Scan any local project or pass a remote GitHub repository URL directly (shallow clones and cleans up automatically).
 - **Multiple Output Formats**:
-  - 🎨 **Terminal Dashboard**: Colored cards with severity badges, file locations, line-level code previews, and topology statistics.
+  - 🎨 **Terminal Dashboard**: Colored cards with severity badges, status, confidence, cross-file reasoning, test scenarios, and research metrics.
   - 📝 **Markdown Report**: Ready to post as a GitHub Issue or Pull Request comment.
-  - 📊 **JSON Export**: Structured output designed for security pipelines and SIEM/dashboard ingestion.
+  - 📊 **JSON Export**: Structured output designed for security pipelines, CI/CD, and research benchmarking.
 - **CI/CD Integration**: Supports `--fail-on-bugs` flag to gate pull requests if `CRITICAL` or `HIGH` vulnerabilities are uncovered.
 
 ---
@@ -128,6 +130,12 @@ Options:
                              |
                              v
                  +-----------------------+
+                 | Repository Context    | (Synthesizes cross-file contracts,
+                 | Builder               |  imported signatures, & callers)
+                 +-----------+-----------+
+                             |
+                             v
+                 +-----------------------+
                  |   RepoSentinel Agent  | (Parallel ThreadPool Executor)
                  +-----------+-----------+
                              |
@@ -135,16 +143,17 @@ Options:
             |                                 |
             v                                 v
 +-----------------------+         +-----------------------+
-| Static Heuristic      |         | LLM Semantic Engine   |
-| Pattern Engine        |         | (Gemini / OpenAI /    |
-| (Zero Network)        |         |  Ollama / DeepSeek)   |
+| RuleBased Hypothesis  |         | LLM Hypothesis Engine |
+| Engine (Deterministic |         | (Gemini / OpenAI /    |
+| & Heuristics)         |         |  Ollama / DeepSeek)   |
 +-----------+-----------+         +-----------+-----------+
             |                                 |
             +----------------+----------------+
                              |
                              v
                  +-----------------------+
-                 | Deduplication & Score |
+                 | Invariant Validation, | (Enforces status invariants,
+                 | Deduplication & Score |  calculates research metrics)
                  +-----------+-----------+
                              |
          +-------------------+-------------------+
@@ -175,10 +184,9 @@ python3 -m unittest discover tests
 - [x] Multi-LLM provider support (Gemini, OpenAI, Ollama)
 - [x] Markdown and JSON report generators
 - [x] AST-based Symbol Indexer & Dependency Topology (`--topology`)
-- [ ] Attack Surface & Risk-Based File Prioritizer (Phase 3)
-- [ ] Context-Enriched Cross-File Prompting (Phase 4)
-- [ ] Two-Stage Autonomous Verification Agent (Phase 5)
-- [ ] Automated Unified Diff Patch / PR Creator (Phase 6)
+- [x] Repository-Aware Bug Hypothesis Generation (Phase 3)
+- [ ] Adversarial Test Generation & Sandboxed Verification (Phase 4)
+- [ ] Autonomous Unified Diff Patch & Pull Request Generator (Phase 5)
 - [ ] GitHub Action workflow for automated PR reviews
 
 ---

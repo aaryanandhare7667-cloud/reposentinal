@@ -48,6 +48,8 @@ class ScanSummary:
     duration_seconds: float = 0.0
     provider_used: str = "mock"
     topology_summary: Optional[Dict[str, Any]] = None
+    hypotheses: List[Any] = field(default_factory=list)
+    metrics: Optional[Dict[str, Any]] = None
 
     @property
     def critical_count(self) -> int:
@@ -88,4 +90,8 @@ class ScanSummary:
         }
         if self.topology_summary is not None:
             result["topology"] = self.topology_summary
+        if self.hypotheses:
+            result["hypotheses"] = [h.to_dict() if hasattr(h, "to_dict") else h for h in self.hypotheses]
+        if self.metrics is not None:
+            result["metrics"] = self.metrics
         return result

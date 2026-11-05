@@ -1,9 +1,11 @@
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Callable, Optional
 from reposentinal.models import BugFinding, FileContext, ScanSummary, Severity
 from reposentinal.providers import BaseLLMProvider
 from reposentinal.indexer import build_repository_index, SymbolKind
+from reposentinal.context import RepositoryContextBuilder
+from reposentinal.hypothesis import BugHypothesis, HypothesisEvaluationMetrics, Confidence
+from reposentinal.hypothesis_engine import BaseHypothesisEngine, RuleBasedHypothesisEngine
 
 SEVERITY_ORDER = {
     Severity.CRITICAL: 0,
@@ -13,11 +15,18 @@ SEVERITY_ORDER = {
     Severity.INFO: 4,
 }
 
+CONFIDENCE_ORDER = {
+    Confidence.HIGH: 0,
+    Confidence.MEDIUM: 1,
+    Confidence.LOW: 2,
+}
+
 
 class RepoSentinelAgent:
     """
     Core bug discovery orchestrator.
-    Manages concurrency, file dispatching, deduplication, and result aggregation.
+    Manages concurrency, repository context synthesis, bug hypothesis generation,
+    deduplication, and research evaluation metrics.
     """
 
     def __init__(
@@ -25,10 +34,12 @@ class RepoSentinelAgent:
         provider: BaseLLMProvider,
         max_workers: int = 4,
         on_file_scanned: Optional[Callable[[FileContext, int, int], None]] = None,
+        hypothesis_engine: Optional[BaseHypothesisEngine] = None,
     ):
         self.provider = provider
         self.max_workers = max_workers
         self.on_file_scanned = on_file_scanned
+        self.hypothesis_engine = hypothesis_engine or RuleBasedHypothesisEngine()
 
     def analyze(self, target_name: str, files: List[FileContext]) -> ScanSummary:
         start_time = time.time()
@@ -48,9 +59,24 @@ class RepoSentinelAgent:
         completed_count = 0
         total_files = len(files)
 
+        # 1. Build repository symbol index and dependency topology first
+        repo_index = build_repository_index(files)
+        context_builder = RepositoryContextBuilder(repo_index)
+
+        all_hypotheses: List[BugHypothesis] = []
+
+        def _scan_worker(file_ctx: FileContext):
+            context = context_builder.build_context(file_ctx)
+            findings = self.provider.analyze_file(file_ctx)
+            try:
+                hypotheses = self.hypothesis_engine.generate_hypotheses(file_ctx, context)
+            except Exception:
+                hypotheses = []
+            return findings, hypotheses
+
         with ThreadPoolExecutor(max_workers=min(self.max_workers, total_files)) as executor:
             future_to_file = {
-                executor.submit(self.provider.analyze_file, file_ctx): file_ctx
+                executor.submit(_scan_worker, file_ctx): file_ctx
                 for file_ctx in files
             }
 
@@ -58,8 +84,9 @@ class RepoSentinelAgent:
                 file_ctx = future_to_file[future]
                 completed_count += 1
                 try:
-                    findings = future.result()
-                    all_findings.extend(findings)
+                    f_list, h_list = future.result()
+                    all_findings.extend(f_list)
+                    all_hypotheses.extend(h_list)
                 except Exception:
                     pass
 
@@ -75,11 +102,42 @@ class RepoSentinelAgent:
                 seen_keys.add(key)
                 unique_findings.append(f)
 
-        # Sort by severity
-        unique_findings.sort(key=lambda x: SEVERITY_ORDER.get(x.severity, 99))
+        # Deduplicate hypotheses
+        unique_hypotheses: List[BugHypothesis] = []
+        seen_hyp_keys = set()
+        for h in all_hypotheses:
+            key = (h.affected_file, h.line_start, h.title.strip().lower())
+            if key not in seen_hyp_keys:
+                seen_hyp_keys.add(key)
+                unique_hypotheses.append(h)
 
-        # Build repository symbol index and dependency topology
-        repo_index = build_repository_index(files)
+        # Ensure every hypothesis has a corresponding BugFinding for backwards compatibility
+        for h in unique_hypotheses:
+            key = (h.affected_file, h.line_start, h.title.strip().lower())
+            if key not in seen_keys:
+                seen_keys.add(key)
+                unique_findings.append(
+                    BugFinding(
+                        file_path=h.affected_file,
+                        line_start=h.line_start,
+                        line_end=h.line_end,
+                        title=f"[{h.status.value}] {h.title}",
+                        category=h.category,
+                        severity=h.severity,
+                        description=f"{h.explanation}\n\nEvidence & Reasoning:\n{h.reasoning}",
+                        remediation=f"{h.remediation}\n\nSuggested Test:\n{h.suggested_test}",
+                        code_snippet=h.code_snippet,
+                    )
+                )
+
+        # Sort findings and hypotheses by severity and confidence
+        unique_findings.sort(key=lambda x: SEVERITY_ORDER.get(x.severity, 99))
+        unique_hypotheses.sort(
+            key=lambda h: (SEVERITY_ORDER.get(h.severity, 99), CONFIDENCE_ORDER.get(h.confidence, 99))
+        )
+
+        metrics = HypothesisEvaluationMetrics.calculate(unique_hypotheses)
+
         topology_summary = {
             "total_symbols": len(repo_index.symbols),
             "classes_count": sum(1 for s in repo_index.symbols if s.kind == SymbolKind.CLASS),
@@ -98,4 +156,6 @@ class RepoSentinelAgent:
             duration_seconds=duration,
             provider_used=type(self.provider).__name__,
             topology_summary=topology_summary,
+            hypotheses=unique_hypotheses,
+            metrics=metrics.to_dict(),
         )
