@@ -52,6 +52,9 @@ class ScanSummary:
     metrics: Optional[Dict[str, Any]] = None
     verification_evidence: List[Any] = field(default_factory=list)
     verification_metrics: Optional[Dict[str, Any]] = None
+    patches: List[Any] = field(default_factory=list)
+    patch_results: List[Any] = field(default_factory=list)
+    patch_metrics: Optional[Dict[str, Any]] = None
 
     @property
     def critical_count(self) -> int:
@@ -100,4 +103,10 @@ class ScanSummary:
             result["verification_evidence"] = [e.to_dict() if hasattr(e, "to_dict") else e for e in self.verification_evidence]
         if self.verification_metrics is not None:
             result["verification_metrics"] = self.verification_metrics
+        if self.patches:
+            result["patches"] = [p.to_dict() if hasattr(p, "to_dict") else p for p in self.patches]
+        if self.patch_results:
+            result["patch_results"] = [r.to_dict() if hasattr(r, "to_dict") else r for r in self.patch_results]
+        if self.patch_metrics is not None:
+            result["patch_metrics"] = self.patch_metrics
         return result

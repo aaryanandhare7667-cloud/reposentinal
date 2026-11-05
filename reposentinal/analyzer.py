@@ -9,6 +9,7 @@ from reposentinal.context import RepositoryContextBuilder
 from reposentinal.hypothesis import BugHypothesis, HypothesisEvaluationMetrics, Confidence
 from reposentinal.hypothesis_engine import BaseHypothesisEngine, RuleBasedHypothesisEngine
 from reposentinal.verifier import HypothesisVerifier
+from reposentinal.patch_verifier import PatchVerifier
 
 SEVERITY_ORDER = {
     Severity.CRITICAL: 0,
@@ -29,7 +30,8 @@ class RepoSentinelAgent:
     """
     Core bug discovery orchestrator.
     Manages concurrency, repository context synthesis, bug hypothesis generation,
-    adversarial test generation, sandboxed verification, deduplication, and research evaluation metrics.
+    adversarial test generation, sandboxed verification, patch generation, patch verification,
+    deduplication, and research evaluation metrics.
     """
 
     def __init__(
@@ -40,6 +42,8 @@ class RepoSentinelAgent:
         hypothesis_engine: Optional[BaseHypothesisEngine] = None,
         verifier: Optional[HypothesisVerifier] = None,
         verify: bool = False,
+        patch_verifier: Optional[PatchVerifier] = None,
+        patch: bool = False,
         target_root_dir: Optional[Path] = None,
     ):
         self.provider = provider
@@ -48,6 +52,8 @@ class RepoSentinelAgent:
         self.hypothesis_engine = hypothesis_engine or RuleBasedHypothesisEngine()
         self.verifier = verifier or HypothesisVerifier()
         self.verify = verify
+        self.patch_verifier = patch_verifier or PatchVerifier()
+        self.patch = patch
         self.target_root_dir = target_root_dir
 
     def analyze(
@@ -128,20 +134,29 @@ class RepoSentinelAgent:
         # Execute adversarial sandboxed verification if enabled
         evidence_list = []
         verification_metrics = None
-        if self.verify and unique_hypotheses:
-            eff_root = root_dir or self.target_root_dir
-            if not eff_root:
-                if Path(target_name).exists() and Path(target_name).is_dir():
-                    eff_root = Path(target_name).resolve()
-                elif files:
-                    eff_root = Path(files[0].abs_path).parent.resolve()
-                else:
-                    eff_root = Path(".").resolve()
+        eff_root = root_dir or self.target_root_dir
+        if not eff_root:
+            if Path(target_name).exists() and Path(target_name).is_dir():
+                eff_root = Path(target_name).resolve()
+            elif files:
+                eff_root = Path(files[0].abs_path).parent.resolve()
             else:
-                eff_root = Path(eff_root).resolve()
+                eff_root = Path(".").resolve()
+        else:
+            eff_root = Path(eff_root).resolve()
 
+        if self.verify and unique_hypotheses:
             unique_hypotheses, evidence_list, verification_metrics = self.verifier.verify_all(
                 unique_hypotheses, eff_root
+            )
+
+        # Execute automated patch generation & verification if enabled
+        patches = []
+        patch_results = []
+        patch_metrics = None
+        if self.patch and unique_hypotheses and evidence_list:
+            patches, patch_results, patch_metrics = self.patch_verifier.verify_all_patches(
+                unique_hypotheses, evidence_list, eff_root
             )
 
         # Ensure every hypothesis has a corresponding BugFinding for backwards compatibility
@@ -193,4 +208,7 @@ class RepoSentinelAgent:
             metrics=metrics.to_dict(),
             verification_evidence=evidence_list,
             verification_metrics=verification_metrics,
+            patches=patches,
+            patch_results=patch_results,
+            patch_metrics=patch_metrics,
         )

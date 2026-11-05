@@ -13,6 +13,7 @@ from reposentinal.indexer import build_repository_index
 from reposentinal.hypothesis_engine import RuleBasedHypothesisEngine, LLMHypothesisEngine
 from reposentinal.sandbox import get_sandbox_backend
 from reposentinal.verifier import HypothesisVerifier
+from reposentinal.patch_verifier import PatchVerifier
 
 
 def parse_args():
@@ -107,6 +108,11 @@ Examples:
         default="auto",
         help="Sandbox backend for executing generated tests (default: auto)",
     )
+    parser.add_argument(
+        "--no-patch",
+        action="store_true",
+        help="Disable automated candidate patch generation and verification for confirmed bugs",
+    )
 
     return parser.parse_args()
 
@@ -182,9 +188,11 @@ def main():
 
         sandbox = get_sandbox_backend(args.sandbox_backend)
         verifier = HypothesisVerifier(sandbox=sandbox)
+        patch_verifier = PatchVerifier(sandbox=sandbox)
 
         ver_info = f", sandbox={sandbox.backend_name}" if not args.no_verify else ", verification=disabled"
-        print(f"🚀 Launching Sentinel Agent with {type(provider).__name__} ({args.workers} workers{ver_info})...")
+        patch_info = ", patches=enabled" if not args.no_patch and not args.no_verify else ", patches=disabled"
+        print(f"🚀 Launching Sentinel Agent with {type(provider).__name__} ({args.workers} workers{ver_info}{patch_info})...")
         agent = RepoSentinelAgent(
             provider=provider,
             max_workers=args.workers,
@@ -192,6 +200,8 @@ def main():
             hypothesis_engine=hyp_engine,
             verifier=verifier,
             verify=not args.no_verify,
+            patch_verifier=patch_verifier,
+            patch=not args.no_patch and not args.no_verify,
             target_root_dir=target_path,
         )
 

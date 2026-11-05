@@ -60,6 +60,26 @@ def get_verification_badge(status) -> str:
         return f"{DIM}[INCONCLUSIVE]{RESET}"
 
 
+def get_patch_status_badge(status) -> str:
+    status_val = status.value if hasattr(status, "value") else str(status)
+    if status_val == "VERIFIED":
+        return f"{GREEN}{BOLD}[PATCH VERIFIED]{RESET}"
+    elif status_val == "VULNERABILITY_FIXED":
+        return f"{GREEN}{BOLD}[VULNERABILITY FIXED]{RESET}"
+    elif status_val == "REGRESSION_DETECTED":
+        return f"{RED}{BOLD}[REGRESSION DETECTED]{RESET}"
+    elif status_val == "VERIFICATION_FAILED":
+        return f"{RED}[VERIFICATION FAILED]{RESET}"
+    elif status_val == "VALIDATION_FAILED":
+        return f"{YELLOW}[VALIDATION FAILED]{RESET}"
+    elif status_val == "APPLY_FAILED":
+        return f"{YELLOW}[APPLY FAILED]{RESET}"
+    elif status_val == "APPLIED":
+        return f"{BLUE}[APPLIED]{RESET}"
+    else:
+        return f"{DIM}[{status_val}]{RESET}"
+
+
 class TerminalReporter:
     @staticmethod
     def print_banner():
@@ -158,6 +178,35 @@ class TerminalReporter:
                     print(f"   {DIM}Notes:{RESET}        {ev.verification_notes}")
                 print()
 
+        # Render Automated Patches if available
+        if summary.patches:
+            print(f"{BOLD}{CYAN}--- Automated Candidate Patches & Verification ({len(summary.patches)}) ---{RESET}\n")
+            result_map = {r.patch_id: r for r in (summary.patch_results or [])}
+            for idx, p in enumerate(summary.patches, start=1):
+                res = result_map.get(p.patch_id)
+                status_badge = get_patch_status_badge(res.status) if res else f"{DIM}[PENDING]{RESET}"
+                print(f"{BOLD}{idx}. {status_badge} {WHITE}{p.patch_id}{RESET} -> Target: {CYAN}{p.target_file}{RESET} ({p.target_symbol or 'global'})")
+                print(f"   {DIM}Objective:{RESET}   {p.patch_objective}")
+                print(f"   {DIM}Rationale:{RESET}   {p.rationale}")
+                if res:
+                    fixed_str = f"{GREEN}YES{RESET}" if res.vulnerability_fixed else f"{RED}NO{RESET}"
+                    reg_str = f"{GREEN}PASS{RESET}" if res.regression_passed else f"{RED}FAIL{RESET}"
+                    print(f"   {DIM}Verification:{RESET} Vulnerability Fixed: {fixed_str} | Regression Tests: {reg_str} ({res.duration_seconds:.2f}s)")
+                    if res.error_message:
+                        print(f"   {DIM}Outcome:{RESET}      {YELLOW}{res.error_message}{RESET}")
+                if p.unified_diff:
+                    print(f"   {DIM}Unified Diff:{RESET}")
+                    for line in p.unified_diff.strip().splitlines()[:15]:
+                        if line.startswith("+") and not line.startswith("+++"):
+                            print(f"     {GREEN}{line}{RESET}")
+                        elif line.startswith("-") and not line.startswith("---"):
+                            print(f"     {RED}{line}{RESET}")
+                        else:
+                            print(f"     {DIM}{line}{RESET}")
+                    if len(p.unified_diff.strip().splitlines()) > 15:
+                        print(f"     {DIM}... (diff truncated){RESET}")
+                print()
+
         # Summary Breakdown
         print(f"{BOLD}----------------- Scan Summary Breakdown -----------------{RESET}")
         print(f"  {BG_RED}{WHITE} CRITICAL {RESET} : {summary.critical_count}")
@@ -172,6 +221,9 @@ class TerminalReporter:
             vm = summary.verification_metrics
             print(f"  {BOLD} VERIFIED {RESET} : Confirmed={vm.get('confirmed_count', 0)} | Reproduced={vm.get('reproduced_count', 0)} | False Positives={vm.get('false_positive_count', 0)} | Inconclusive={vm.get('inconclusive_count', 0)}")
             print(f"  {BOLD} SANDBOX  {RESET} : Backend={vm.get('sandbox_backend', 'none')} | Repro Rate={int(vm.get('reproduction_rate', 0)*100)}% | Avg Duration={vm.get('average_verification_seconds', 0)}s")
+        if summary.patch_metrics:
+            pm = summary.patch_metrics
+            print(f"  {BOLD} PATCHES  {RESET} : Verified={pm.get('patches_verified', 0)} | Generated={pm.get('patches_generated', 0)} | Regressions={pm.get('regression_detected_count', 0)} | Fix Rate={int(pm.get('vulnerability_fix_rate', 0)*100)}%")
         print(f"  {BOLD} TOTAL    {RESET} : {len(summary.hypotheses or summary.findings)}")
         print(f"{BOLD}----------------------------------------------------------{RESET}\n")
 
@@ -212,6 +264,12 @@ class MarkdownReporter:
             md.append(f"| ❓ Inconclusive Tests | {vm.get('inconclusive_count', 0)} |")
             md.append(f"| ⚡ Reproduction Rate | {int(vm.get('reproduction_rate', 0)*100)}% |")
 
+        if summary.patch_metrics:
+            pm = summary.patch_metrics
+            md.append(f"| 🛠️ Patches Verified | {pm.get('patches_verified', 0)} |")
+            md.append(f"| ⚠️ Regressions Detected | {pm.get('regression_detected_count', 0)} |")
+            md.append(f"| 📈 Vulnerability Fix Rate | {int(pm.get('vulnerability_fix_rate', 0)*100)}% |")
+
         items_count = len(summary.hypotheses or summary.findings)
         md.append(f"| **Total Hypotheses** | **{items_count}** |\n")
 
@@ -229,6 +287,26 @@ class MarkdownReporter:
                 status_str = f"**{ev.status.value}**" if hasattr(ev.status, "value") else str(ev.status)
                 md.append(f"| `{ev.test_id}` | `{ev.hypothesis_id}` | {status_str} | `{ev.execution.sandbox_backend}` | {ev.execution.duration_seconds:.2f}s | {trace_summary} |")
             md.append("\n---\n")
+
+        if summary.patches:
+            md.append("## 🛠️ Automated Candidate Patches & Verification Diffs\n")
+            result_map = {r.patch_id: r for r in (summary.patch_results or [])}
+            for idx, p in enumerate(summary.patches, start=1):
+                res = result_map.get(p.patch_id)
+                status_str = f"**{res.status.value}**" if res and hasattr(res.status, "value") else "**PENDING**"
+                fixed_str = "✅ YES" if res and res.vulnerability_fixed else "❌ NO"
+                reg_str = "✅ PASS" if res and res.regression_passed else "❌ FAIL"
+                md.append(f"### {idx}. [{status_str}] `{p.patch_id}` -> `{p.target_file}`\n")
+                md.append(f"- **Target Symbol**: `{p.target_symbol or 'global'}`")
+                md.append(f"- **Objective**: {p.patch_objective}")
+                md.append(f"- **Rationale**: {p.rationale}")
+                if res:
+                    md.append(f"- **Verification**: Vulnerability Fixed: {fixed_str} | Regression Tests: {reg_str} ({res.duration_seconds:.2f}s)")
+                    if res.error_message:
+                        md.append(f"- **Outcome Note**: `{res.error_message}`")
+                if p.unified_diff:
+                    md.append(f"\n```diff\n{p.unified_diff.strip()}\n```\n")
+                md.append("---\n")
 
         if summary.hypotheses:
             md.append("## 🔍 Repository-Aware Bug Hypotheses\n")

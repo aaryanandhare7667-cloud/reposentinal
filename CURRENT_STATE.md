@@ -1,26 +1,31 @@
 # RepoSentinel: Current State & Architecture Assessment
 
 *Last Updated: 2026-11-05*  
-*Document Version: 1.3.0 (Phase 4: Adversarial Test Generation & Sandboxed Verification)*  
+*Document Version: 1.4.0 (Phase 5: Automated Patch Generation & Patch Verification)*  
 *Lead Engineer Status Report*
 
 ---
 
 ## 1. Executive Summary
 
-RepoSentinel is an autonomous bug discovery and vulnerability intelligence system for GitHub repositories. With the completion of **Phase 4**, the system has advanced into a full **adversarial verification pipeline**:
+RepoSentinel is an autonomous bug discovery and verification intelligence system for GitHub repositories. With the completion of **Phase 5**, the system has achieved full closed-loop remediation:
 
-$$\text{BugHypothesis} \longrightarrow \text{Adversarial Test Generation} \longrightarrow \text{Sandboxed Execution} \longrightarrow \text{Evidence Collection} \longrightarrow \text{Verification Decision}$$
+$$\begin{aligned}
+\text{Repository Scan} &\longrightarrow \text{Topology Graph} \longrightarrow \text{Bug Hypothesis} \longrightarrow \text{Adversarial Test} \longrightarrow \text{Sandbox Verification} \\
+&\longrightarrow \mathbf{Confirmed\ Bug} \longrightarrow \mathbf{Patch\ Generation} \longrightarrow \mathbf{Isolated\ Workspace\ Application} \\
+&\longrightarrow \mathbf{Dual\text{-}Phase\ Verification\ (Repro\ Fixed\ \&\ Regressions\ Passed)} \longrightarrow \mathbf{Verified\ Patch\ /\ Diff}
+\end{aligned}$$
 
-Instead of relying on model self-reporting or heuristic confidence alone, RepoSentinel now:
-1. Synthesizes executable Python reproduction tests tailored to each hypothesis category (cross-module null assumptions, SQL injection, command injection, insecure configuration, swallowed exceptions).
-2. Executes reproduction tests safely inside an isolated sandbox (`DockerSandbox` if Docker is installed, or `SafeSubprocessSandbox` fallback with environment secret scrubbing, ephemeral filesystem isolation, and timeout enforcement).
-3. Evaluates deterministic execution evidence:
-   - **REPRODUCED**: Target entered expected vulnerable state / crash -> promotes hypothesis to `Confirmed Bug`.
-   - **FALSE_POSITIVE** / **NOT_REPRODUCED**: Target safely handled or rejected input -> hypothesis remains unconfirmed and is flagged to prevent false alarms.
-   - **INCONCLUSIVE**: Environment setup failure, missing dependency, or execution timeout.
-4. Enforces strict confirmation invariants: an LLM or static rule can never mark a bug as `Confirmed Bug` without deterministic reproduction evidence.
-5. Captures comprehensive research metrics (reproduction rate, false positive prevention rate, test execution time, confidence distribution).
+RepoSentinel now:
+1. Synthesizes minimal, idiomatic, targeted code fixes (`GeneratedPatch`) specifically tailored to confirmed vulnerabilities.
+2. Validates candidate patches structurally through a defensive safety validator (`PatchSafetyValidator`) to reject destructive code, credential leaks, or unauthorized file modifications.
+3. Applies candidate patches exclusively within an isolated ephemeral temporary workspace (`IsolatedPatchWorkspace`). **The user's original repository is NEVER modified or contaminated.**
+4. Performs **Dual-Phase Patch Verification**:
+   - **Phase A (Adversarial Re-Testing)**: Re-runs the original reproduction test against the patched workspace to verify that the vulnerability is deterministically eliminated.
+   - **Phase B (Functional Regression Testing)**: Executes functional tests on valid inputs to verify that legitimate system functionality was not broken by the patch.
+5. Differentiates security fixes with regressions (`REGRESSION_DETECTED`) from clean, regression-free fixes (`VERIFIED`).
+6. Generates standardized, ready-to-review unified diffs (`.patch` format).
+7. Maintains a strict human-in-the-loop requirement: patches are autonomously verified and presented for review, but **never automatically merged or committed to the user's branch without explicit human approval**.
 
 ---
 
@@ -32,7 +37,7 @@ RepoSentinel maintains zero external runtime dependencies (Python >=3.9 standard
 reposentinal/
 ├── bin/reposentinal          # Standalone executable CLI launcher
 ├── reposentinal/
-│   ├── __init__.py           # Package versioning (v0.4.0) and top-level exports
+│   ├── __init__.py           # Package versioning (v0.5.0) and top-level exports
 │   ├── models.py             # Domain models (BugFinding, FileContext, ScanSummary, Severity)
 │   ├── indexer.py            # AST Symbol Indexer & Dependency Topology Graph (Phase 2)
 │   ├── context.py            # Repository Context Builder & Prompt Synthesizer (Phase 3)
@@ -42,11 +47,17 @@ reposentinal/
 │   ├── sandbox.py            # BaseSandbox, DockerSandbox, SafeSubprocessSandbox (Phase 4)
 │   ├── verification.py       # VerificationStatus, ExecutionResult, VerificationEvidence (Phase 4)
 │   ├── verifier.py           # HypothesisVerifier & Research Metrics Evaluator (Phase 4)
+│   ├── patch_models.py       # GeneratedPatch, PatchVerificationResult, PatchQualityMetrics (Phase 5)
+│   ├── patch_safety.py       # PatchSafetyValidator: structural & security checks (Phase 5)
+│   ├── patch_workspace.py    # IsolatedPatchWorkspace: ephemeral workspace manager (Phase 5)
+│   ├── patch_applier.py      # PatchApplier: workspace diff application & AST check (Phase 5)
+│   ├── patch_generator.py    # DeterministicPatchGenerator: minimal, safe patch synthesis (Phase 5)
+│   ├── patch_verifier.py     # PatchVerifier: dual-phase verification & regression protection (Phase 5)
 │   ├── scanner.py            # Target cloning, directory walker, binary filter, extension map
 │   ├── providers.py          # LLM integrations (MockProvider, GeminiProvider, OpenAIProvider)
-│   ├── analyzer.py           # Multi-threaded orchestrator & verification pipeline integration
-│   ├── reporter.py           # Formatting engines (ANSI Terminal, Markdown, JSON, Research Metrics)
-│   └── cli.py                # Command-line interface with --topology, --no-verify, --sandbox-backend
+│   ├── analyzer.py           # Multi-threaded orchestrator & end-to-end pipeline coordination
+│   ├── reporter.py           # Formatting engines (ANSI Terminal, Markdown, JSON, Patch Diffs)
+│   └── cli.py                # Command-line interface with --topology, --no-verify, --no-patch
 ├── tests/
 │   ├── __init__.py
 │   ├── fixtures/
@@ -62,12 +73,13 @@ reposentinal/
 │   ├── test_scanner.py            # Scanner, heuristic, and orchestrator unit tests
 │   ├── test_indexer.py            # AST symbol extraction, resolution, and topology tests
 │   ├── test_hypothesis.py         # Hypothesis schema, cross-module reasoning, resilience tests
-│   └── test_verification.py       # Adversarial generation, sandbox lifecycle, invariants, verification tests
+│   ├── test_verification.py       # Adversarial generation, sandbox lifecycle, invariants tests
+│   └── test_patch.py              # Patch generation, workspace isolation, dual-phase verification tests
 ├── pyproject.toml            # Package configuration & standard entrypoints
 └── requirements.txt          # Zero required runtime dependencies
 ```
 
-### Complete End-to-End Pipeline (Phase 4):
+### Complete End-to-End Pipeline (Phase 5):
 ```
 [User / CLI Target]
         │
@@ -81,87 +93,78 @@ reposentinal/
 [indexer.build_repository_index] ──► Generates Symbol Index & Dependency Topology Graph
         │
         ▼
-[context.RepositoryContextBuilder] ──► Synthesizes per-file Cross-Module Context:
-        │                              - Imported internal symbol contracts & docstrings
-        │                              - Inbound callers and cross-module usages
-        │                              - External library dependencies
-        ▼
-[analyzer.RepoSentinelAgent] ──► Multi-threaded dispatch across workers:
-        │
-        ├──► [BaseHypothesisEngine] (RuleBased or LLM: Gemini / OpenAI / Ollama)
-        │         │
-        │         ▼
-        │    [Hypothesis Invariant Enforcement]
-        │    - Validates schema and line ranges
-        │    - Prevents unverified "Confirmed Bug" status (downgrades to Likely Bug)
-        │    - Formulates structured BugHypothesis instances
+[context.RepositoryContextBuilder] ──► Synthesizes per-file Cross-Module Relational Context
         │
         ▼
-[Deduplication of Candidate Hypotheses]
+[analyzer.RepoSentinelAgent] ──► Generates Bug Hypotheses (RuleBased or LLM)
         │
         ▼
-[verifier.HypothesisVerifier] (Adversarial Verification Pipeline)
+[verifier.HypothesisVerifier] ──► Synthesizes Adversarial Tests & Executes in Sandbox
         │
-        ├──► [test_generator.DeterministicTestGenerator]
-        │         │
-        │         ▼
-        │    Synthesizes targeted AdversarialTest script
-        │    Validated by TestSafetyValidator (blocks destructive calls)
+        ├── Exit Code 0 ──► Promotes to [Confirmed Bug]
         │
-        ├──► [sandbox.BaseSandbox] (DockerSandbox or SafeSubprocessSandbox)
-        │         │
-        │         ▼
-        │    Executes in isolated ephemeral environment:
-        │    - Environment secrets scrubbed (OPENAI_API_KEY, GEMINI_API_KEY, tokens stripped)
-        │    - Isolated Python invocation (python -I -s -B)
-        │    - Timeout enforcement (default: 10s)
-        │    - Captures stdout, stderr, exit code, duration
+        ▼
+[patch_verifier.PatchVerifier] (Automated Remediation Engine)
         │
-        ├──► [Deterministic Verification Evaluation]
+        ├──► [patch_generator.DeterministicPatchGenerator]
         │         │
-        │         ├── Exit Code 0 ──► REPRODUCED ──► Promotes to [Confirmed Bug]
-        │         ├── Exit Code 2 ──► FALSE_POSITIVE / NOT_REPRODUCED ──► Retains Likely/Potential
-        │         ├── Exit Code 3 ──► INCONCLUSIVE (Setup/dependency constraint)
-        │         └── Timeout     ──► INCONCLUSIVE (Execution threshold exceeded)
+        │         ▼ Synthesizes minimal candidate GeneratedPatch
+        │
+        ├──► [patch_safety.PatchSafetyValidator]
+        │         │
+        │         ▼ Checks syntax (ast.parse), prevents destructive patterns and secret leaks
+        │
+        ├──► [patch_workspace.IsolatedPatchWorkspace]
+        │         │
+        │         ▼ Creates ephemeral tempdir (user's repo is 100% untouched)
+        │
+        ├──► [patch_applier.PatchApplier]
+        │         │
+        │         ▼ Applies patch in isolated workspace
+        │
+        ├──► [Phase A: Adversarial Re-Testing]
+        │         │
+        │         ▼ Vulnerability still reproduced?
+        │           ├── YES ──► Status: VERIFICATION_FAILED
+        │           └── NO  ──► Vulnerability FIXED!
+        │
+        ├──► [Phase B: Functional Regression Testing]
+        │         │
+        │         ▼ Legitimate valid calls execute successfully?
+        │           ├── NO  ──► Status: REGRESSION_DETECTED
+        │           └── YES ──► Status: VERIFIED!
         │
         ▼
 [reporter.TerminalReporter / MarkdownReporter / JSONReporter]
+- Outputs Verified Patches with colorized Unified Diffs
+- Outputs Empirical Patch Quality Metrics
 ```
 
 ---
 
-## 3. Verification States & Decision Model
-
-RepoSentinel implements explicit verification states:
+## 3. Patch Verification States & Decision Model
 
 | Status | Definition | Transition Condition |
 |---|---|---|
-| `UNVERIFIED` | Initial state of a generated hypothesis. | Before adversarial test execution. |
-| `REPRODUCED` | The adversarial test successfully reproduced the vulnerable behavior or crash. | Sandbox exits with code `0`, confirming deterministic reproduction. |
-| `CONFIRMED` | Hypothesis promoted to verified status based on evidence. | Automatically promoted upon reaching `REPRODUCED`. |
-| `NOT_REPRODUCED` | The test executed but the target did not exhibit vulnerable behavior. | Sandbox exits with code `2`. |
-| `FALSE_POSITIVE` | Safe handling observed (e.g. grace check handled null input safely). | Sandbox exits with code `2` with `SAFE_HANDLING_OBSERVED`. |
-| `INCONCLUSIVE` | The test could not conclude due to timeout or missing dependencies. | Sandbox exits with code `3` or timeout expiration. |
-
-### Strict Confirmation Invariant:
-An LLM or static rule can **never** mark a hypothesis as `Confirmed Bug`. Direct instantiation or JSON deserialization of `Confirmed Bug` without verified execution proof (`is_verified=True`) is immediately rejected or downgraded to `Likely Bug`. Only deterministic execution evidence can promote a finding to `Confirmed Bug`.
+| `GENERATED` | Candidate patch synthesized. | Initial generator state before validation. |
+| `VALIDATION_FAILED` | Patch rejected by safety validator. | Fails closed on syntax error, destructive command, or credential. |
+| `APPLY_FAILED` | Workspace file application error. | File missing or cannot be written in temporary workspace. |
+| `APPLIED` | Successfully applied in workspace. | File updated and verified by AST parser. |
+| `VULNERABILITY_FIXED` | Adversarial test no longer reproduces. | Intermediate state indicating exploit is mitigated. |
+| `REGRESSION_DETECTED` | Vulnerability fixed, but breaks valid calls. | Legitimate input tests fail after patch application. |
+| `VERIFICATION_FAILED` | Vulnerability still reproduces after patch. | Adversarial test continues to trigger vulnerability. |
+| `VERIFIED` | Exploit eliminated AND all regressions pass. | Dual-phase verification confirmed deterministically. |
+| `INCONCLUSIVE` | Hypothesis unconfirmed or generator missing. | Patch cannot proceed without confirmed reproduction. |
 
 ---
 
-## 4. Sandbox Isolation Architecture
+## 4. Critical Invariants
 
-The execution sandbox ensures untrusted or generated test code never affects the host system:
-
-1. **Docker Sandbox (`DockerSandbox`)**:
-   - Containerized execution using `python:3.11-slim`.
-   - Flags: `--network=none`, `--memory=256m`, `--cpus=1`.
-   - Volume mounts only an ephemeral temporary directory, cleaned up upon test conclusion.
-2. **Safe Subprocess Sandbox (`SafeSubprocessSandbox`)**:
-   - Primary fallback when Docker is unavailable.
-   - Copies repository files to an isolated `tempfile.mkdtemp` workspace.
-   - Clears and scrubs all host environment variables (removes `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GH_TOKEN`, and any variable containing `SECRET`, `PASSWORD`, `AUTH`, `KEY`).
-   - Invokes target via `sys.executable -I -s -B` (isolated mode, no user site packages, no bytecode cache).
-   - Enforces execution timeouts and purges temporary directories in `finally` blocks.
+1. **Workspace Isolation**: A patch cannot become `VERIFIED` unless it was applied and tested inside an isolated temporary workspace. The user's host repository files are never modified.
+2. **Deterministic Mitigated Exploit**: A patch cannot become `VERIFIED` unless the original adversarial reproduction test is re-run and proves the vulnerability is no longer reproducible.
+3. **Regression Protection**: A patch cannot become `VERIFIED` if required functional regression tests fail on legitimate inputs.
+4. **Anti-Hallucination**: LLM output alone can never mark a patch as `VERIFIED`. Only deterministic sandbox execution evidence can grant this status.
+5. **No Automatic Commits**: Candidate patches are presented as verified unified diffs for human review; RepoSentinel never commits, pushes, or merges without explicit human approval.
 
 ---
 
@@ -169,47 +172,42 @@ The execution sandbox ensures untrusted or generated test code never affects the
 
 Automated test execution: `python3 -m unittest discover tests`
 
-- `test_adversarial_test_generation_null_assumption`: Validates reproduction script synthesis for cross-module null assumptions.
-- `test_adversarial_test_generation_sql_injection`: Validates test script generation for SQL injection vulnerabilities.
-- `test_test_safety_validator_rejects_dangerous_patterns`: Verifies rejection of destructive code (`shutil.rmtree('/')`, `rm -rf /`, `os.remove('/etc/passwd')`).
-- `test_test_safety_validator_rejects_malformed_syntax`: Verifies rejection of invalid Python code.
-- `test_test_safety_validator_rejects_empty_code`: Validates rejection of empty test code.
-- `test_sandbox_lifecycle_and_output_capture`: Validates stdout/stderr capture, exit code handling, and ephemeral workspace cleanup.
-- `test_sandbox_timeout_handling`: Validates timeout enforcement and status capture.
-- `test_sandbox_scrubs_host_secrets`: Confirms host secrets and API keys are completely stripped from sandbox execution.
-- `test_reproduction_on_vulnerable_fixture`: Proves end-to-end reproduction of real cross-module `TypeError` on vulnerable fixture and promotion to `Confirmed Bug`.
-- `test_false_positive_differentiation`: Proves that safe code (`safe_order_service.py`) gracefully handles null tokens and is correctly classified as `FALSE_POSITIVE` rather than confirmed.
-- `test_inconclusive_on_setup_failure`: Validates `INCONCLUSIVE` classification when target modules or dependencies fail to import.
-- `test_research_metrics_calculation`: Validates aggregation of reproduction rate, false positive counts, and timing metrics.
-- `test_end_to_end_agent_with_verification`: Tests full `RepoSentinelAgent` workflow with verification enabled.
-- All 14 Phase 3 hypothesis and topology tests.
+- `test_deterministic_patch_generation_null_assumption`: Validates minimal null guard synthesis.
+- `test_patch_safety_validator_rejects_destructive_patterns`: Confirms rejection of `rmtree`, `rm -rf`, `os.remove`.
+- `test_patch_safety_validator_rejects_credentials`: Confirms rejection of hardcoded tokens and secrets.
+- `test_patch_safety_validator_rejects_syntax_errors`: Confirms rejection of broken Python syntax.
+- `test_patch_safety_validator_rejects_protected_system_paths`: Confirms rejection of attempts to alter CI/CD or RepoSentinel internals.
+- `test_isolated_workspace_lifecycle_and_immutability`: Confirms original host repository files are 100% byte-for-byte identical before, during, and after patch verification.
+- `test_patch_applier_verifies_clean_syntax`: Validates workspace file write and AST verification.
+- `test_successful_patch_verification_dual_phase`: Proves dual-phase verification (`order_service.py` vulnerability fixed + regression passed -> `VERIFIED`).
+- `test_regression_detected_when_patch_breaks_valid_calls`: Proves that a patch breaking valid checkouts is flagged as `REGRESSION_DETECTED` and refused `VERIFIED`.
+- `test_verification_failed_when_vulnerability_still_reproduces`: Proves that an ineffective patch is classified as `VERIFICATION_FAILED`.
+- `test_invariant_unconfirmed_hypothesis_rejected_for_patching`: Confirms unconfirmed hypotheses cannot receive verified patches.
+- `test_end_to_end_agent_with_patching`: Validates complete `RepoSentinelAgent` run with `--patch`.
+- All 27 Phase 1–4 unit and integration tests.
 
-**Total**: `27/27 tests passing (100%) in 1.8s`.
-
----
-
-## 6. Research Metrics Output
-
-When scanned with verification enabled, RepoSentinel calculates empirical evaluation metrics:
-- `tests_generated`: Total adversarial reproduction tests synthesized.
-- `tests_executed`: Total tests executed inside the sandbox.
-- `reproduced_count`: Number of confirmed, reproduced bugs.
-- `not_reproduced_count`: Number of un-reproduced hypotheses.
-- `false_positive_count`: Number of candidate bugs disproved by safe execution behavior.
-- `inconclusive_count`: Number of tests restricted by setup or timeout constraints.
-- `reproduction_rate`: Ratio of confirmed bugs to executed tests ($\frac{\text{reproduced}}{\text{executed}}$).
-- `sandbox_backend`: Active execution backend (`docker` or `safe_subprocess`).
-- `average_verification_seconds`: Mean execution time per test.
+**Total**: `39/39 tests passing (100%) in 2.65s`.
 
 ---
 
-## 7. Current Limitations & Next Planned Phase
+## 6. Patch Quality Metrics
 
-1. **Multi-Language Test Execution (Phase 5/6)**:
-   - Phase 4 supports Python reproduction tests. Subsequent phases will extend deterministic drivers to TypeScript, Go, and Rust.
-2. **Patch Synthesis (Phase 5)**:
-   - Synthesizing unified diff patches (`.patch`) for confirmed bugs and re-verifying that the adversarial test passes after patching.
+When executed with patching enabled, RepoSentinel outputs empirical research metrics:
+- `patches_generated`: Total candidate patches synthesized.
+- `patches_validated`: Patches passing safety validation.
+- `patches_applied`: Patches successfully applied to isolated workspaces.
+- `patches_verified`: Patches with confirmed vulnerability mitigation and zero regressions.
+- `regression_detected_count`: Fixes that inadvertently broke legitimate functionality.
+- `vulnerability_fix_rate`: Ratio of mitigated exploits to applied patches.
+- `patch_verification_rate`: Ratio of fully verified regression-free patches to generated patches.
+- `total_lines_added` / `total_lines_removed`: Patch size metrics.
+- `average_patch_time` / `average_verification_time`: Efficiency metrics.
 
-### Recommended Next Milestone: Phase 5 (Autonomous Patch Synthesis & Pull Request Generator)
-- Implement an automated patch engine that takes confirmed bugs and produces unified diff fixes.
-- Re-run verification tests against patched code to guarantee the vulnerability is eliminated without introducing regressions.
+---
+
+## 7. Next Planned Phase
+
+### Phase 6: Interactive Developer Review & PR Bot
+- Interactive terminal review prompt (`[y] Apply Patch | [n] Discard | [e] Edit Diff`).
+- Automated GitHub Pull Request comment bot to post verified patch diffs directly onto GitHub pull requests.
+- Optional branch patch committer with signed commits.

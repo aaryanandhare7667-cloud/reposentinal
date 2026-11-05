@@ -1,13 +1,13 @@
 # 🛡️ RepoSentinel
 
-> **Autonomous Bug Discovery & Sandboxed Verification Agent for GitHub Repositories**
+> **Autonomous Bug Discovery, Sandboxed Verification & Patch Agent for GitHub Repositories**
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-success.svg)](requirements.txt)
-[![Tests Passing](https://img.shields.io/badge/tests-27%2F27%20passing-brightgreen.svg)](tests/)
+[![Tests Passing](https://img.shields.io/badge/tests-39%2F39%20passing-brightgreen.svg)](tests/)
 
-RepoSentinel is an autonomous bug discovery and verification agent that inspects codebases, identifies critical vulnerabilities, unhandled cross-module edge cases, and logic bugs, synthesizes adversarial reproduction tests, and verifies findings in an isolated sandbox.
+RepoSentinel is an autonomous bug discovery, adversarial verification, and automated patch remediation agent. It inspects repositories, identifies critical vulnerabilities and cross-module edge cases, generates reproduction tests, verifies bugs in an isolated sandbox, and synthesizes regression-tested unified diff patches.
 
 📖 **Documentation**: See [CURRENT_STATE.md](CURRENT_STATE.md) for the complete architectural assessment and [TODO.md](TODO.md) for the active engineering roadmap.
 
@@ -18,17 +18,17 @@ RepoSentinel is an autonomous bug discovery and verification agent that inspects
 - **Multi-Language Detection**: Scans Python, TypeScript, JavaScript, Go, Rust, Java, C/C++, Ruby, PHP, SQL, Shell, and more.
 - **Repository-Aware Symbol Index & Topology**: AST-based symbol extraction (classes, functions, methods, parameters, docstrings) and automated inter-file dependency graph mapping (`--topology`).
 - **Repository-Aware Bug Hypothesis Engine**: Discovers inter-module vulnerabilities, unchecked return assumptions, and cross-file data flows with concrete reproduction test scenarios.
-- **Adversarial Test Generation (Phase 4)**: Automatically synthesizes executable reproduction tests targeting hypothesized vulnerabilities (null assumptions, SQL injection, command execution, insecure SSL, swallowed exceptions).
-- **Isolated Sandboxed Verification (Phase 4)**: Executes tests safely inside Docker (`--network=none`, CPU/RAM limits) or a hardened ephemeral subprocess sandbox with host environment secret scrubbing.
-- **Strict Confirmation Invariant**: Findings are never marked `Confirmed Bug` merely because an LLM claimed it. Confirmation requires deterministic runtime reproduction. Differentiates verified bugs from false positives (`[FALSE POSITIVE]`).
-- **Empirical Research Metrics**: Measures reproduction rate, false positive prevention rate, cross-file interaction ratios, and test execution duration.
-- **Dual Engine Architecture**:
-  - **Static Heuristic Engine**: Zero-network offline heuristics to catch command injections, hardcoded secrets, SQL injection formatting, swallowed exceptions, and unclosed resources.
-  - **LLM Agent Engine**: Deep semantic reasoning powered by Google Gemini, OpenAI, DeepSeek, or local models via Ollama enriched with cross-file repository context.
-- **Zero Required External Dependencies**: Engineered on the Python standard library—runs anywhere Python 3.9+ is installed without `pip install` hurdles.
-- **Remote & Local Ingestion**: Scan any local project or pass a remote GitHub repository URL directly (shallow clones and cleans up automatically).
+- **Adversarial Test Generation & Sandboxed Verification (Phase 4)**: Automatically synthesizes executable reproduction tests and executes them inside an isolated sandbox (`DockerSandbox` or `SafeSubprocessSandbox` with host secret scrubbing).
+- **Automated Candidate Patch Generation (Phase 5)**: Synthesizes minimal, targeted code fixes for confirmed bugs without full-file rewrites.
+- **Defensive Patch Safety Validator (Phase 5)**: AST syntax check, blocks destructive commands, prevents credential leaks, and protects CI/CD configurations.
+- **Isolated Workspace Application (Phase 5)**: Applies candidate patches exclusively within an isolated ephemeral temporary workspace. **The user's host repository is NEVER modified.**
+- **Dual-Phase Patch Verification (Phase 5)**:
+  - **Step A: Adversarial Re-Testing**: Confirms the vulnerability is no longer reproducible.
+  - **Step B: Functional Regression Testing**: Confirms legitimate inputs and workflows still execute successfully.
+- **Strict Invariants**: Findings are never marked `Confirmed Bug` and patches are never marked `VERIFIED` based on LLM claims alone. Runtime reproduction and regression testing are strictly required.
+- **Zero Required External Dependencies**: Engineered on the standard library—runs anywhere Python 3.9+ is installed without `pip install` hurdles.
 - **Multiple Output Formats**:
-  - 🎨 **Terminal Dashboard**: Colored cards with severity badges, status, confidence, cross-file reasoning, test scenarios, and research metrics.
+  - 🎨 **Terminal Dashboard**: Colored cards with severity badges, verified status, reproduction traces, research metrics, and unified diffs.
   - 📝 **Markdown Report**: Ready to post as a GitHub Issue or Pull Request comment.
   - 📊 **JSON Export**: Structured output designed for security pipelines, CI/CD, and research benchmarking.
 
@@ -43,19 +43,18 @@ git clone https://github.com/aaryanandhare7667-cloud/reposentinal.git
 cd reposentinal
 ```
 
-### 2. Run Instant Scan with Verification (Default)
+### 2. Run Instant Scan with Verification & Patch Generation (Default)
 
-Scan the local project or fixture with automated sandboxed verification:
+Scan the local project or fixture with automated verification and patch synthesis:
 
 ```bash
 python3 bin/reposentinal tests/fixtures/cross_file_repo/ --topology
 ```
 
-Disable verification if you only want rapid static hypothesis generation:
-
-```bash
-python3 bin/reposentinal tests/fixtures/cross_file_repo/ --no-verify
-```
+Options:
+- `--no-verify`: Disable adversarial test generation and sandboxed verification.
+- `--no-patch`: Disable automated patch generation (runs verification only).
+- `--sandbox-backend {auto,docker,subprocess}`: Select preferred sandbox backend.
 
 ### 3. Scan with LLMs
 
@@ -78,8 +77,6 @@ python3 bin/reposentinal . --provider ollama --model llama3 --base-url http://lo
 
 ### 4. Scan a Remote GitHub Repository Directly
 
-RepoSentinel will automatically clone the repository shallowly, scan it, and clean up temporary files:
-
 ```bash
 python3 bin/reposentinal https://github.com/pallets/flask --max-files 20
 ```
@@ -95,6 +92,7 @@ usage: reposentinal [-h] [--provider {mock,gemini,openai,ollama}]
                     [--max-files MAX_FILES] [--workers WORKERS] [--dry-run]
                     [--fail-on-bugs] [--topology] [--no-verify]
                     [--sandbox-backend {auto,docker,subprocess}]
+                    [--no-patch]
                     [target]
 
 Options:
@@ -112,11 +110,12 @@ Options:
   --topology            Display detailed repository symbol index and dependency topology graph
   --no-verify           Disable adversarial test generation and sandboxed verification
   --sandbox-backend     Sandbox backend for executing generated tests: auto, docker, subprocess (default: auto)
+  --no-patch            Disable automated candidate patch generation and verification for confirmed bugs
 ```
 
 ---
 
-## 🧪 Verification Example Output
+## 🧪 Live Verification & Patch Output
 
 ```
 ======================================================================
@@ -126,47 +125,65 @@ Options:
 Target:         tests/fixtures/cross_file_repo/
 Provider:       MockProvider
 Files Scanned:  3 files (32 lines of code)
-Duration:       0.20s
+Duration:       0.48s
 Topology:       4 symbols (1 classes, 2 functions, 1 methods) | 2 inter-file dependencies
 
 --- Repository-Aware Bug Hypotheses (2) ---
 
 1.  CRITICAL  [Confirmed Bug] (High Conf) SQL Injection via Dynamic String Interpolation
-   Location:    order_service.py:12 [Symbol: process_order_checkout]  (Potential Security Vulnerability)
-   Explanation: Dynamic formatting of variables into SQL statement bypasses query parameterization.
-   Reasoning:   Query string interpolates variables directly; untrusted input can alter SQL abstract syntax tree.
-   Code:        `query = f"INSERT INTO orders (id, user_id, amount) VALUES ('{order_id}', {user_id}, {amount})"`
-   Test Case:   Supply username containing single quote ("admin' OR '1'='1") and observe query syntax bypass.
-   Remediation: Use parameterized queries: cursor.execute('SELECT ... WHERE u = %s', (val,))
-
 2. [HIGH] [Confirmed Bug] (High Conf) Incorrect Assumption: Unchecked Return Value from `verify_jwt_token`
-   Location:    order_service.py:6-9 [Symbol: process_order_checkout]  (Incorrect Assumptions)
-   Explanation: Variable `user` is assigned from cross-module function `verify_jwt_token` (from `auth_service.py`) and dereferenced without checking if it is None.
-   Reasoning:   Cross-module dependency analysis: `auth_service.py` defines `verify_jwt_token`. Its contract/docstring indicates it can return None on failure. `order_service.py` directly accesses properties on `user` without a null guard.
-   Related:     auth_service.py:verify_jwt_token
-   Code:        `user = verify_jwt_token(token)`
-   Test Case:   Mock or trigger `verify_jwt_token` to return None and execute `process_order_checkout`; assert that TypeError or AttributeError occurs instead of handled failure.
-   Remediation: Add validation: `if user is None: raise ...` before accessing properties.
 
 --- Adversarial Sandboxed Verification Evidence (2) ---
 
-1. [REPRODUCED] Test TEST-HYP-CROSS-NULL-6 -> Target HYP-CROSS-NULL-6 (safe_subprocess, 0.10s)
+1. [REPRODUCED] Test TEST-HYP-CROSS-NULL-6 -> Target HYP-CROSS-NULL-6 (safe_subprocess, 0.09s)
    Reproduction: VULNERABILITY_REPRODUCED: TypeError: 'NoneType' object is not subscriptable
-   Notes:        Vulnerability reproduced deterministically: VULNERABILITY_REPRODUCED: TypeError: 'NoneType' object is not subscriptable
 
 2. [REPRODUCED] Test TEST-HYP-SEC-SQL-12 -> Target HYP-SEC-SQL-12 (safe_subprocess, 0.10s)
-   Reproduction: VULNERABILITY_REPRODUCED: Unescaped SQL injection probe found in query: EXECUTED: INSERT INTO orders (id, user_id, amount) VALUES ('test' OR '1'='1', 42, 100)
-   Notes:        Vulnerability reproduced deterministically: VULNERABILITY_REPRODUCED: Unescaped SQL injection probe found in query: EXECUTED: INSERT INTO orders (id, user_id, amount) VALUES ('test' OR '1'='1', 42, 100)
+   Reproduction: VULNERABILITY_REPRODUCED: Unescaped SQL injection probe found in query: EXECUTED...
+
+--- Automated Candidate Patches & Verification (2) ---
+
+1. [PATCH VERIFIED] PATCH-HYP-CROSS-NULL-6 -> Target: order_service.py (process_order_checkout)
+   Objective:   Add null check after verify_jwt_token call to prevent unhandled TypeError
+   Rationale:   The dependency `verify_jwt_token` can return None on invalid or expired authentication tokens. Adding an explicit guard returns a safe 401 response and prevents unhandled TypeError exceptions.
+   Verification: Vulnerability Fixed: YES | Regression Tests: PASS (0.14s)
+   Unified Diff:
+     --- a/order_service.py
+     +++ b/order_service.py
+     @@ -4,6 +4,8 @@
+      def process_order_checkout(token: str, order_id: str, amount: float):
+          # 1. Cross-module bug: assumes verify_jwt_token always returns dict
+          user = verify_jwt_token(token)
+     +    if user is None:
+     +        return {"error": "Unauthorized: invalid or missing authentication token", "status": 401}
+          user_role = user["role"]
+          user_id = user["user_id"]
+
+2. [PATCH VERIFIED] PATCH-HYP-SEC-SQL-12 -> Target: order_service.py (process_order_checkout)
+   Objective:   Enforce input parameter validation before SQL statement formatting
+   Rationale:   Unescaped dynamic string interpolation into SQL commands allows query manipulation. Validating inputs against dangerous SQL punctuation rejects injection attempts prior to execution.
+   Verification: Vulnerability Fixed: YES | Regression Tests: PASS (0.14s)
+   Unified Diff:
+     --- a/order_service.py
+     +++ b/order_service.py
+     @@ -9,5 +9,8 @@
+      
+          # 2. SQL injection
+          gateway = DatabaseGateway()
+     +    # Enforce strict input validation to prevent SQL injection bypass
+     +    if any(c in str(order_id) for c in ("'", '"', ';', ' ')):
+     +        return {"error": "Invalid order_id format", "status": 400}
+          query = f"INSERT INTO orders (id, user_id, amount) VALUES ('{order_id}', {user_id}, {amount})"
+          return gateway.execute_raw_sql(query)
 
 ----------------- Scan Summary Breakdown -----------------
    CRITICAL  : 2
    HIGH      : 1
-   MEDIUM    : 0
-   LOW       : 0
    STATUS    : Confirmed=2 | Likely=0 | Potential=0
    RESEARCH  : Cross-File Interactions=1 (50%) | Symbol Mapped=2
    VERIFIED  : Confirmed=2 | Reproduced=2 | False Positives=0 | Inconclusive=0
-   SANDBOX   : Backend=safe_subprocess | Repro Rate=100% | Avg Duration=0.099s
+   SANDBOX   : Backend=safe_subprocess | Repro Rate=100% | Avg Duration=0.098s
+   PATCHES   : Verified=2 | Generated=2 | Regressions=0 | Fix Rate=100%
    TOTAL     : 2
 ----------------------------------------------------------
 ```
@@ -185,7 +202,8 @@ Tests run in standard Python with zero mock libraries or external dependencies:
 - Scanner and heuristic unit tests (`tests/test_scanner.py`)
 - Symbol index and AST topology unit tests (`tests/test_indexer.py`)
 - Hypothesis schema, reasoning, and resilience tests (`tests/test_hypothesis.py`)
-- Adversarial test generation, sandbox lifecycle, invariants, and verification tests (`tests/test_verification.py`)
+- Adversarial test generation, sandbox lifecycle, invariants tests (`tests/test_verification.py`)
+- Patch generation, workspace isolation, dual-phase verification tests (`tests/test_patch.py`)
 
 ---
 
