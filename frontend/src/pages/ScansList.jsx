@@ -37,9 +37,10 @@ export default function ScansList() {
   }, []);
 
   const filteredScans = scans.filter(scan => {
-    const matchesSearch = 
-      scan.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      scan.targetRepo.toLowerCase().includes(searchTerm.toLowerCase());
+    const term = (searchTerm || '').toLowerCase();
+    const sId = (scan.id || '').toLowerCase();
+    const sRepo = (scan.targetRepo || scan.targetPath || '').toLowerCase();
+    const matchesSearch = sId.includes(term) || sRepo.includes(term);
     const matchesStatus = 
       statusFilter === 'ALL' || scan.status === statusFilter;
     return matchesSearch && matchesStatus;

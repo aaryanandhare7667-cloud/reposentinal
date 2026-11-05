@@ -34,11 +34,13 @@ export default function RepositoriesList() {
     loadRepos();
   }, []);
 
-  const filteredRepos = repositories.filter(repo => 
-    repo.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    repo.path.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (repo.url && repo.url.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredRepos = repositories.filter(repo => {
+    const term = (searchTerm || '').toLowerCase();
+    const rName = (repo.name || '').toLowerCase();
+    const rPath = (repo.path || '').toLowerCase();
+    const rUrl = (repo.url || '').toLowerCase();
+    return rName.includes(term) || rPath.includes(term) || rUrl.includes(term);
+  });
 
   return (
     <div className="space-y-6">

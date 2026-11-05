@@ -89,6 +89,18 @@ class ScanRecord:
         verified_patches_count = 0
         duration_ms = int(self.duration_seconds * 1000)
 
+        counts = {
+            "critical": 0,
+            "high": 0,
+            "medium": 0,
+            "low": 0,
+            "info": 0,
+            "total": 0,
+        }
+        repro_count = 0
+        repro_rate = "100%"
+        patch_fix_rate = "100%"
+
         if self.summary:
             modules_scanned = self.summary.scanned_files
             hyp_count = len(self.summary.hypotheses)
@@ -100,16 +112,36 @@ class ScanRecord:
                 for r in self.summary.patch_results
                 if r.status == PatchVerificationStatus.VERIFIED
             )
+            counts["critical"] = sum(1 for h in self.summary.hypotheses if h.severity.value == "CRITICAL")
+            counts["high"] = sum(1 for h in self.summary.hypotheses if h.severity.value == "HIGH")
+            counts["total"] = hyp_count
+            repro_count = confirmed_count
+            if self.summary.verification_metrics and isinstance(self.summary.verification_metrics, dict):
+                repro_rate = f"{int(self.summary.verification_metrics.get('reproduction_rate', 1.0) * 100)}%"
+            if self.summary.patch_metrics and isinstance(self.summary.patch_metrics, dict):
+                patch_fix_rate = f"{int(self.summary.patch_metrics.get('vulnerability_fix_rate', 1.0) * 100)}%"
 
         return {
             "id": self.scan_id,
             "targetRepo": self.target_path,
+            "targetPath": self.target_path,
             "status": self.status,
             "durationMs": duration_ms,
+            "durationSeconds": round(self.duration_seconds, 2),
             "modulesScanned": modules_scanned,
+            "scannedFiles": modules_scanned,
             "hypothesesCount": hyp_count,
             "confirmedFindingsCount": confirmed_count,
             "verifiedPatchesCount": verified_patches_count,
+            "counts": counts,
+            "verificationMetrics": {
+                "reproduced": repro_count,
+                "reproductionRate": repro_rate,
+            },
+            "patchMetrics": {
+                "totalVerified": verified_patches_count,
+                "fixRate": patch_fix_rate,
+            },
             "createdAt": self.created_at,
             "completedAt": self.completed_at,
             "progress": self.progress,
@@ -126,6 +158,7 @@ class ScanRecord:
             data.update(self.summary.to_dict())
             data["id"] = self.scan_id
             data["targetRepo"] = self.target_path
+            data["targetPath"] = self.target_path
             data["status"] = self.status
             data["progress"] = self.progress
             data["createdAt"] = self.created_at
@@ -134,6 +167,18 @@ class ScanRecord:
             data["scannedFiles"] = self.summary.scanned_files
             data["totalLines"] = self.summary.total_lines
             data["durationSeconds"] = round(self.summary.duration_seconds, 2)
+            # CamelCase aliases for frontend
+            data["verificationMetrics"] = {
+                "testsGenerated": self.summary.verification_metrics.get("tests_generated", 0) if isinstance(self.summary.verification_metrics, dict) else 0,
+                "testsExecuted": self.summary.verification_metrics.get("tests_executed", 0) if isinstance(self.summary.verification_metrics, dict) else 0,
+                "reproduced": self.summary.verification_metrics.get("reproduced_count", 0) if isinstance(self.summary.verification_metrics, dict) else 0,
+                "reproductionRate": f"{int(self.summary.verification_metrics.get('reproduction_rate', 1.0) * 100)}%" if isinstance(self.summary.verification_metrics, dict) else "100%",
+            }
+            data["patchMetrics"] = {
+                "patchesGenerated": self.summary.patch_metrics.get("patches_generated", 0) if isinstance(self.summary.patch_metrics, dict) else 0,
+                "totalVerified": self.summary.patch_metrics.get("patches_verified", 0) if isinstance(self.summary.patch_metrics, dict) else 0,
+                "fixRate": f"{int(self.summary.patch_metrics.get('vulnerability_fix_rate', 1.0) * 100)}%" if isinstance(self.summary.patch_metrics, dict) else "100%",
+            }
         else:
             data["findings"] = []
             data["hypotheses"] = []

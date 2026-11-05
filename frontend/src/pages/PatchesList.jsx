@@ -41,11 +41,17 @@ export default function PatchesList() {
   }, []);
 
   const filteredPatches = patches.filter(p => {
+    const pId = (p.id || '').toLowerCase();
+    const pHyp = (p.hypothesisId || p.hypothesis_id || '').toLowerCase();
+    const pFile = (p.targetFile || p.target_file || '').toLowerCase();
+    const pObj = (p.objective || p.patch_objective || '').toLowerCase();
+    const term = (searchTerm || '').toLowerCase();
+
     const matchesSearch = 
-      p.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.hypothesisId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.targetFile.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.objective.toLowerCase().includes(searchTerm.toLowerCase());
+      pId.includes(term) ||
+      pHyp.includes(term) ||
+      pFile.includes(term) ||
+      pObj.includes(term);
 
     const matchesStatus = 
       statusFilter === 'ALL' ||

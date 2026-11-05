@@ -104,22 +104,27 @@ export function ScanDetail() {
         />
         <MetricCard
           title="Confirmed Bugs"
-          value={scan.counts?.critical + scan.counts?.high || 0}
+          value={(scan.counts?.critical || 0) + (scan.counts?.high || 0)}
           subvalue={`${scan.counts?.critical || 0} Critical • ${scan.counts?.high || 0} High`}
           icon={AlertTriangle}
-          variant={scan.counts?.total > 0 ? 'critical' : 'success'}
+          variant={(scan.counts?.total || 0) > 0 ? 'critical' : 'success'}
         />
         <MetricCard
           title="Sandbox Repro Rate"
-          value={scan.verificationMetrics?.reproductionRate || '0%'}
-          subvalue={`${scan.verificationMetrics?.reproduced || 0} reproduced`}
+          value={
+            scan.verificationMetrics?.reproductionRate ||
+            (scan.verification_metrics?.reproduction_rate !== undefined
+              ? `${Math.round(scan.verification_metrics.reproduction_rate * 100)}%`
+              : '0%')
+          }
+          subvalue={`${scan.verificationMetrics?.reproduced ?? scan.verification_metrics?.reproduced_count ?? 0} reproduced`}
           icon={FlaskConical}
           variant="cyan"
         />
         <MetricCard
           title="Verified Patches"
-          value={scan.patchMetrics?.totalVerified || 0}
-          subvalue={`${scan.patchMetrics?.fixRate || '0%'} Fix Rate`}
+          value={scan.patchMetrics?.totalVerified ?? scan.patch_metrics?.patches_verified ?? 0}
+          subvalue={`${scan.patchMetrics?.fixRate || (scan.patch_metrics?.vulnerability_fix_rate !== undefined ? `${Math.round(scan.patch_metrics.vulnerability_fix_rate * 100)}%` : '0%')} Fix Rate`}
           icon={Wrench}
           variant="success"
         />

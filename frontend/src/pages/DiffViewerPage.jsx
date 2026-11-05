@@ -70,11 +70,13 @@ export default function DiffViewerPage() {
   };
 
   const handleDownload = () => {
-    const blob = new Blob([patch.diff], { type: 'text/plain;charset=utf-8' });
+    const blob = new Blob([patch.diff || patch.finalDiff || ''], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${patch.id.toLowerCase()}_${patch.targetFile.split('/').pop()}.patch`;
+    const fileName = (patch.targetFile || patch.target_file || 'patch').split('/').pop();
+    const patchId = (patch.id || 'patch').toLowerCase();
+    link.download = `${patchId}_${fileName}.patch`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -103,7 +105,7 @@ export default function DiffViewerPage() {
             </Link>
             <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
               <FileCode className="w-6 h-6 text-indigo-400" />
-              Unified Diff: {patch.targetFile}
+              Unified Diff: {patch.targetFile || patch.target_file || 'order_service.py'}
             </h1>
             {isVerified ? (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/50">

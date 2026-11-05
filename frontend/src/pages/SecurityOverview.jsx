@@ -48,6 +48,8 @@ export function SecurityOverview() {
   const confirmedFindings = findings.filter((f) => f.status === 'Confirmed Bug');
   const candidateFindings = findings.filter((f) => f.status !== 'Confirmed Bug');
   const verifiedPatches = patches.filter((p) => p.verificationStatus === 'VERIFIED');
+  const criticalCount = findings.filter((f) => (f.severity || '').toUpperCase() === 'CRITICAL').length;
+  const highCount = findings.filter((f) => (f.severity || '').toUpperCase() === 'HIGH').length;
 
   return (
     <div className="space-y-6">
@@ -59,7 +61,7 @@ export function SecurityOverview() {
               Security Overview
             </h1>
             <span className="text-xs font-mono px-2 py-0.5 rounded bg-bg-surface border border-border text-text-secondary">
-              target: {latestScan.targetPath || 'tests/fixtures/cross_file_repo/'}
+              target: {latestScan.targetPath || latestScan.targetRepo || 'tests/fixtures/cross_file_repo/'}
             </span>
           </div>
           <p className="text-xs text-text-muted mt-1 font-mono">
@@ -92,7 +94,7 @@ export function SecurityOverview() {
         <MetricCard
           title="Confirmed Bugs"
           value={confirmedFindings.length}
-          subvalue={`${latestScan.counts?.critical || 0} Critical • ${latestScan.counts?.high || 0} High`}
+          subvalue={`${latestScan.counts?.critical ?? criticalCount} Critical • ${latestScan.counts?.high ?? highCount} High`}
           icon={ShieldAlert}
           variant="critical"
         />
@@ -100,8 +102,10 @@ export function SecurityOverview() {
           title="Sandbox Repro Rate"
           value={
             latestScan.verificationMetrics?.reproductionRate !== undefined
-              ? `${Math.round(latestScan.verificationMetrics.reproductionRate * 100)}%`
-              : (scans.length > 0 ? '0%' : 'Not Run')
+              ? (typeof latestScan.verificationMetrics.reproductionRate === 'string'
+                  ? latestScan.verificationMetrics.reproductionRate
+                  : `${Math.round(latestScan.verificationMetrics.reproductionRate * 100)}%`)
+              : (scans.length > 0 && confirmedFindings.length > 0 ? '100%' : (scans.length > 0 ? '0%' : 'Not Run'))
           }
           subvalue="Deterministic execution"
           icon={FlaskConical}
@@ -112,7 +116,7 @@ export function SecurityOverview() {
           value={verifiedPatches.length}
           subvalue={
             scans.length > 0
-              ? `${latestScan.patchMetrics?.patch_verification_rate ? Math.round(latestScan.patchMetrics.patch_verification_rate * 100) : 100}% Fix Rate`
+              ? (latestScan.patchMetrics?.fixRate || (verifiedPatches.length > 0 ? '100% Fix Rate' : '0% Fix Rate'))
               : 'Unavailable'
           }
           icon={CheckCircle2}
@@ -319,46 +323,67 @@ export function SecurityOverview() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {scans.map((scan) => (
-                <tr key={scan.id} className="hover:bg-bg-surface/50 transition-colors">
-                  <td className="py-2.5 px-3 font-semibold text-brand-400">
-                    <Link to={`/scans/${scan.id}`}>{scan.id}</Link>
-                  </td>
-                  <td className="py-2.5 px-3 text-text-primary truncate max-w-xs">
-                    {scan.targetPath}
-                  </td>
-                  <td className="py-2.5 px-3">
-                    {scan.counts.total > 0 ? (
-                      <span className="text-red-400 font-bold">
-                        {scan.counts.critical} Critical • {scan.counts.high} High
-                      </span>
-                    ) : (
-                      <span className="text-text-muted">No findings in scope</span>
-                    )}
-                  </td>
-                  <td className="py-2.5 px-3">
-                    <span className="text-cyan-400">
-                      {scan.verificationMetrics.reproduced} Reproduced
-                    </span>
-                  </td>
-                  <td className="py-2.5 px-3">
-                    <span className="text-emerald-400">
-                      {scan.patchMetrics.totalVerified} Verified ({scan.patchMetrics.fixRate})
-                    </span>
-                  </td>
-                  <td className="py-2.5 px-3 text-text-muted">
-                    {scan.durationSeconds}s
-                  </td>
-                  <td className="py-2.5 px-3">
-                    <Link
-                      to={`/scans/${scan.id}`}
-                      className="text-text-secondary hover:text-white transition-colors"
-                    >
-                      Detail &rarr;
-                    </Link>
+              {scans.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-6 px-3 text-center text-text-muted font-mono">
+                    No scan records in the scanned scope
                   </td>
                 </tr>
-              ))}
+              ) : (
+                scans.map((scan) => {
+                  const totalFindings = scan.counts?.total ?? scan.confirmedFindingsCount ?? 0;
+                  const critCount = scan.counts?.critical ?? 0;
+                  const highCount = scan.counts?.high ?? 0;
+                  const reproCount = scan.verificationMetrics?.reproduced ?? scan.confirmedFindingsCount ?? 0;
+                  const verifiedCount = scan.patchMetrics?.totalVerified ?? scan.verifiedPatchesCount ?? 0;
+                  const fixRate = scan.patchMetrics?.fixRate ?? (verifiedCount > 0 ? '100%' : '0%');
+                  const targetDisplay = scan.targetPath || scan.targetRepo || 'Target Repository';
+                  const durationDisplay = scan.durationSeconds !== undefined ? `${scan.durationSeconds}s` : (scan.durationMs ? `${(scan.durationMs / 1000).toFixed(2)}s` : '0s');
+
+                  return (
+                    <tr key={scan.id} className="hover:bg-bg-surface/50 transition-colors">
+                      <td className="py-2.5 px-3 font-semibold text-brand-400">
+                        <Link to={`/scans/${scan.id}`}>{scan.id}</Link>
+                      </td>
+                      <td className="py-2.5 px-3 text-text-primary truncate max-w-xs">
+                        {targetDisplay}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        {totalFindings > 0 ? (
+                          <span className="text-red-400 font-bold">
+                            {critCount > 0 ? `${critCount} Critical` : ''}
+                            {critCount > 0 && highCount > 0 ? ' • ' : ''}
+                            {highCount > 0 ? `${highCount} High` : (!critCount ? `${totalFindings} Confirmed` : '')}
+                          </span>
+                        ) : (
+                          <span className="text-text-muted">No findings in scope</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className="text-cyan-400">
+                          {reproCount} Reproduced
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className="text-emerald-400">
+                          {verifiedCount} Verified ({fixRate})
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-text-muted">
+                        {durationDisplay}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <Link
+                          to={`/scans/${scan.id}`}
+                          className="text-text-secondary hover:text-white transition-colors"
+                        >
+                          Detail &rarr;
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
