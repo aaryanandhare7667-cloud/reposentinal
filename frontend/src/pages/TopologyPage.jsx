@@ -88,11 +88,6 @@ export default function TopologyPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Link to="/code">
-            <Button variant="secondary" size="sm">
-              Code View
-            </Button>
-          </Link>
           <Link to="/findings">
             <Button variant="outline" size="sm">
               View Linked Findings

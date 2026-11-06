@@ -8,7 +8,6 @@ import {
   Wrench,
   GitFork,
   Network,
-  Code2,
   BarChart3,
   BookOpen,
   Settings,
@@ -27,7 +26,6 @@ export function Sidebar() {
 
   const analysisNav = [
     { to: '/topology', label: 'Topology Graph', icon: Network },
-    { to: '/code', label: 'Code View', icon: Code2 },
     { to: '/metrics', label: 'SecOps Metrics', icon: BarChart3 },
     { to: '/method', label: 'Method & Pipeline', icon: BookOpen },
   ];

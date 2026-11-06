@@ -6,7 +6,6 @@ import {
   Clock, 
   Play, 
   Network, 
-  Code, 
   ShieldCheck, 
   AlertTriangle,
   ExternalLink,
@@ -105,11 +104,6 @@ export default function RepositoryDetail() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Link to={`/code`}>
-            <Button variant="secondary" size="sm">
-              <Code className="w-3.5 h-3.5 mr-1" /> Code View
-            </Button>
-          </Link>
           <Link to={`/topology`}>
             <Button variant="outline" size="sm">
               <Network className="w-3.5 h-3.5 mr-1" /> Topology

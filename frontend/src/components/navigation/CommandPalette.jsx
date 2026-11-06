@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Bug, Terminal, Wrench, Network, Code2, BookOpen, Settings, ArrowRight } from 'lucide-react';
+import { Search, Bug, Terminal, Wrench, Network, BookOpen, Settings, ArrowRight } from 'lucide-react';
 import { mockFindings, mockPatches, mockScans } from '../../data/mockData';
 
 export function CommandPalette({ isOpen, onClose }) {
@@ -19,7 +19,6 @@ export function CommandPalette({ isOpen, onClose }) {
     { label: 'All Findings', to: '/findings', icon: Bug },
     { label: 'Verified Patches', to: '/patches', icon: Wrench },
     { label: 'Topology Graph', to: '/topology', icon: Network },
-    { label: 'Code View', to: '/code', icon: Code2 },
     { label: 'Method & Pipeline', to: '/method', icon: BookOpen },
     { label: 'Settings', to: '/settings', icon: Settings },
   ];

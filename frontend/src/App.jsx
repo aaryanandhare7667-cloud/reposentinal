@@ -16,7 +16,6 @@ import DiffViewerPage from './pages/DiffViewerPage';
 import RepositoriesList from './pages/RepositoriesList';
 import RepositoryDetail from './pages/RepositoryDetail';
 import TopologyPage from './pages/TopologyPage';
-import CodeViewPage from './pages/CodeViewPage';
 import OperationsMetricsPage from './pages/OperationsMetricsPage';
 import MethodPage from './pages/MethodPage';
 import SettingsPage from './pages/SettingsPage';
@@ -48,7 +47,6 @@ export default function App() {
           <Route path="/repositories" element={<RepositoriesList />} />
           <Route path="/repositories/:id" element={<RepositoryDetail />} />
           <Route path="/topology" element={<TopologyPage />} />
-          <Route path="/code" element={<CodeViewPage />} />
 
           {/* Analysis & System */}
           <Route path="/metrics" element={<OperationsMetricsPage />} />
